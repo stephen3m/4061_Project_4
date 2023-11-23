@@ -25,7 +25,7 @@ int receive_file(int socket, const char *filename) {
 
 int main(int argc, char* argv[]) {
     if(argc != 3){
-        fprintf(stderr, "Usage: ./client File_Path_to_image Rotation_angle. \n");
+        fprintf(stderr, "Usage: ./client File_Path_to_images File_Path_to_output_dir Rotation_angle. \n");
         return 1;
     }
     
