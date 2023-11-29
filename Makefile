@@ -22,7 +22,9 @@ clean:
 test: clean all
 	./server & 
 	for i in `seq 0 10`; do ./client "img/$$i" "output/$$i" 180; done; 
+	pkill -f ./server
 
 outdir: 
 	for i in `seq 0 10`; do mkdir -p -m 0777 "output/$$i"; done;
+
 

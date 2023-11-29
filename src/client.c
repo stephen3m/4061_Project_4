@@ -68,6 +68,12 @@ int main(int argc, char* argv[]) {
     // Read the directory for all the images to rotate
 
     // Send the image data to the server
+    /* Stephen: Here's a piazza post reply: 
+    You can read an image into a buffer in the client. 
+    Then, send the buffer directly to the server. 
+    The server then creates a temporary file to store the buffer. 
+    Now, you can use stbi_laod() and any other operations we did in PA3 to rotate the image.
+    */
 
     // Check that the request was acknowledged
 
