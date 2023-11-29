@@ -1,6 +1,6 @@
 #include "client.h"
 
-#define PORT 8080
+#define PORT 4891
 #define BUFFER_SIZE 1024 
 
 int send_file(int socket, const char *filename) {
