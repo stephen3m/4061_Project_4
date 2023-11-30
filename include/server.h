@@ -38,7 +38,7 @@
 /********************* [ Helpful Macro Definitions ] **********************/
 #define BUFF_SIZE 1024 
 #define LOG_FILE_NAME "request_log"               //Standardized log file name
-#define INVALID -1                                  //Reusable int for marking things as invalid or incorrect 
+#define INVALID -1                                //Reusable int for marking things as invalid or incorrect
 
 // Operations
 #define IMG_OP_ACK      (1 << 0)
@@ -53,6 +53,8 @@
 #define IMG_FLAG_CHECKSUM       (1 << 3)
 
 /********************* [ Helpful Typedefs        ] ************************/
+
+const int PACKETSZ = sizeof(packet_t);
 
 typedef struct packet {
     unsigned char operation : 4;

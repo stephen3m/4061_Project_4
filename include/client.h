@@ -51,6 +51,8 @@
 
 /********************* [ Helpful Typedefs        ] ************************/
 
+const int PACKETSZ = sizeof(packet_t);
+
 typedef struct packet {
     unsigned char operation : 4;
     unsigned char flags : 4;
@@ -61,6 +63,8 @@ typedef struct packet {
 typedef struct request_queue {
     int rotation_angle;
     char *file_name;
+    request_t *next_node;
+    request_t *prev_node;
 } request_t; 
 
 typedef struct processing_args {
