@@ -84,7 +84,7 @@ int main(int argc, char* argv[]) {
     request_t *head_node = current_node;
 
     struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
+    while ((entry = readdir(output_directory)) != NULL) {
         // Skip the "." and ".." entries
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
@@ -99,7 +99,7 @@ int main(int argc, char* argv[]) {
             strcpy(current_node->file_name, file_path);
             current_node->rotation_angle = angle;
             current_node->next_node = malloc(sizeof(request_t));
-            current_node->prev_n = previous_node;
+            current_node->prev_node = previous_node;
 
             previous_node = current_node;
             current_node = current_node->next_node;
@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
     // Release any resources
     current_node = queue_end;
     while(current_node != NULL) {
-        current_node = current_node->prev_n;
+        current_node = current_node->prev_node;
         free(current_node->next_node);
     }
     free(head_node);

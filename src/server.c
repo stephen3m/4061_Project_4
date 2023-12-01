@@ -19,7 +19,7 @@ void *clientHandler(void *socket) {
         perror("recv error");    
 
     // Determine the packet operatation and flags
-    Packet *recvpacket = deserializeData(recvdata);
+    packet_t *recvpacket = deserializeData(recvdata);
 
     while(recvpacket.operation != ntohl(IMG_OP_EXIT)){
         ret = recv(conn_fd, recvdata, PACKETSZ, 0);
@@ -28,7 +28,7 @@ void *clientHandler(void *socket) {
             
         recvpacket = deserializeData(recvdata);    
 
-        Packet packet;
+        packet_t packet;
         packet.operation = htons(PROTO_ACK);
         strcpy(packet.data, recvpacket->data);
         char *serializedData = serializePacket(&packet);
