@@ -61,7 +61,7 @@ typedef struct packet {
 } packet_t; 
 
 // serialize packet
-char *serializePacket(Packet *packet){
+char *serializePacket(packet_t *packet){
     char *serializedData = (char *)malloc(sizeof(char) * PACKETSZ);
     memset(serializedData, 0, PACKETSZ);
     memcpy(serializedData, packet, PACKETSZ);
@@ -69,8 +69,8 @@ char *serializePacket(Packet *packet){
 }
 
 // deserialize data
-Packet *deserializeData(char *serializedData){
-    Packet *packet = (Packet *)malloc(sizeof(Packet));
+packet_t *deserializeData(char *serializedData){
+    packet_t *packet = (packet_t *)malloc(sizeof(packet_t));
     memset(packet, 0, PACKETSZ);
     memcpy(packet, serializedData, PACKETSZ);
     return packet;
