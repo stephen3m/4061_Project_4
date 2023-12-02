@@ -57,8 +57,24 @@ typedef struct packet {
     unsigned char operation : 4;
     unsigned char flags : 4;
     unsigned int size;
-    unsigned char checksum[SHA256_BLOCK_SIZE];
+    // unsigned char checksum[SHA256_BLOCK_SIZE];
 } packet_t; 
+
+// serialize packet
+char *serializePacket(Packet *packet){
+    char *serializedData = (char *)malloc(sizeof(char) * PACKETSZ);
+    memset(serializedData, 0, PACKETSZ);
+    memcpy(serializedData, packet, PACKETSZ);
+    return serializedData;
+}
+
+// deserialize data
+Packet *deserializeData(char *serializedData){
+    Packet *packet = (Packet *)malloc(sizeof(Packet));
+    memset(packet, 0, PACKETSZ);
+    memcpy(packet, serializedData, PACKETSZ);
+    return packet;
+}
 
 typedef struct request_queue {
     int rotation_angle;
@@ -67,9 +83,9 @@ typedef struct request_queue {
     request_t *prev_node;
 } request_t; 
 
-typedef struct processing_args {
-    int number_worker;
-    char *file_name;
-} processing_args_t;
+// typedef struct processing_args {
+//     int number_worker;
+//     char *file_name;
+// } processing_args_t; 
 
 #endif

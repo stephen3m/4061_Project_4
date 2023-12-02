@@ -86,14 +86,23 @@ int main(int argc, char* argv[]) {
 
         if(conn_fd == -1)
             perror("accept error");
+
+        // if(pthread_create(&workerArray[worker_idx], NULL, clientHandler, (void *)&conn_fd) != 0){
+        //     fprintf(stderr, "Error creating worker thread.\n");
+        //     return -1;
+        // }
+        // pthread_detach(workerArray[idx]);
         
-        if(pthread_create(&workerArray[worker_idx], NULL, clientHandler, (void *)&conn_fd) != 0){
-            fprintf(stderr, "Error creating worker thread.\n");
-            return -1;
-        }
-        pthread_detach(workerArray[idx]);
+        // worker_idx++;
+
+        // INTER SUBMISSION
+        // Server receiving packet from client
+        char recvdata[PACKETSZ];
+        memset(recvdata, 0, PACKETSZ);
+        ret = recv(conn_fd, recvdata, PACKETSZ, 0); // receive data
+        if(ret == -1)
+            perror("recv err");
         
-        worker_idx ++;
     }
     
 
