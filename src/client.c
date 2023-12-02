@@ -3,6 +3,48 @@
 #define PORT 4891
 #define BUFFER_SIZE 1024 
 
+// pthread_mutex_t queue_mut = PTHREAD_MUTEX_INITIALIZER;
+
+request_t *req_queue = NULL;
+request_t *end_queue = NULL;
+//How will you track which index in the request queue to remove next? We will use a dequeue function
+request_t *dequeue_request() {
+    if (req_queue == NULL) {
+        // pthread_mutex_unlock(&queue_mut);
+        return NULL; // Queue is empty
+    }
+    request_t *ret_request = req_queue;
+    req_queue = req_queue->next;
+
+    if (req_queue == NULL) { // Queue had one object which was dequeued
+        end_queue = NULL; 
+    }
+    return ret_request;
+}
+
+void enqueue_request(int new_angle, char* file_path){
+    // pthread_mutex_lock(&queue_mut);
+
+    request_t *new_request = malloc(sizeof(request_t));
+    if (new_request == NULL) { // Malloc error
+        // pthread_mutex_unlock(&queue_mut);
+        return;
+    }
+    strcpy(new_request->file_path, file_path);
+    new_request->angle = new_angle;
+    new_request->next = NULL;
+
+    if (req_queue == NULL){
+        req_queue = new_request;
+        end_queue = new_request;
+    }
+    else{
+        end_queue->next = new_request;
+        end_queue = end_queue->next;
+    }
+    // pthread_mutex_unlock(&queue_mut);
+}
+
 int send_file(int socket, const char *filename) {
     // Open the file
     FILE *fd = fopen(filename, "r");
@@ -12,10 +54,17 @@ int send_file(int socket, const char *filename) {
     }
 
     // Set up the request packet for the server and send it
+    request_t *cur_request = dequeue_request();
     packet_t request_packet;
-    // request_packet.operation = 
+    request_packet.operation = IMG_OP_ROTATE;
+    if(cur_request->rotation_angle == 180){
+        request_packet.flags = IMG_FLAG_ROTATE_180;
+    }
+    else if(cur_request->rotation_angle == 270){
+        request_packet.flags = IMG_FLAG_ROTATE_270;
+    }
     // request_packet.flags =
-    // request_packet.size = 
+    request_packet.size = sizeof(cur_request);
     send(socket, &request_packet, sizeof(packet_t), 0);
 
     // Send the file data
@@ -84,7 +133,7 @@ int main(int argc, char* argv[]) {
     request_t *head_node = current_node;
 
     struct dirent *entry;
-    while ((entry = readdir(output_directory)) != NULL) {
+    while ((entry = readdir(dir)) != NULL) {
         // Skip the "." and ".." entries
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
@@ -92,23 +141,28 @@ int main(int argc, char* argv[]) {
         // Enqueue for ".png" files
         char *extension = strrchr(entry->d_name, '.'); // gets pointer to last occurrence of "." in entry->d_name
         if (extension != NULL && strcmp(extension, ".png") == 0) { // check if file ends in ".png"
-            char file_path[BUFF_SIZE]; // in the form "img/x/xxx.png"
-            memset(file_path, 0, BUFF_SIZE);
-            sprintf(file_path, "%s/%s", direct_path, entry->d_name);
+            // char file_path[BUFF_SIZE]; // in the form "img/x/xxx.png"
+            // memset(file_path, 0, BUFF_SIZE);
+            // sprintf(file_path, "%s/%s", direct_path, entry->d_name);
 
-            strcpy(current_node->file_name, file_path);
-            current_node->rotation_angle = angle;
-            current_node->next_node = malloc(sizeof(request_t));
-            current_node->prev_node = previous_node;
+            // strcpy(current_node->file_name, file_path);
+            // current_node->rotation_angle = angle;
+            // current_node->next_node = malloc(sizeof(request_t));
+            // current_node->prev_n = previous_node;
 
-            previous_node = current_node;
-            current_node = current_node->next_node;
+            // previous_node = current_node;
+            // current_node = current_node->next_node;
+
+            char file_path[BUFF_SIZE*2]; // in the form "img/x/xxx.png"
+            memset(file_path, 0, BUFF_SIZE*2);
+            sprintf(file_path, "%s/%s", directory_path, entry->d_name);
+            enqueue_request(angle, file_path); // synchronization handled in enqueue_request
             
         }
     }
     // no more files, set end of queue's next to NULL
-    request_t *queue_end = current_node;
-    current_node->next_node = NULL;
+    // request_t *queue_end = current_node;
+    // current_node->next_node = NULL;
 
 
     // Send the image data to the server
@@ -124,7 +178,6 @@ int main(int argc, char* argv[]) {
         // Check that the request was acknowledged
         send_file(sockfd, current_node->file_name);
 
-
         // Receive the processed image and save it in the output dir
         receive_file(sockfd, current_node->file_name);
 
@@ -132,12 +185,16 @@ int main(int argc, char* argv[]) {
     }
 
     // Terminate the connection once all images have been processed
+    packet_t request_packet;
+    request_packet.operation = IMG_OP_EXIT;
+    send(socket, &request_packet, sizeof(packet_t), 0);
+
     close(sockfd); // close socket
 
     // Release any resources
     current_node = queue_end;
     while(current_node != NULL) {
-        current_node = current_node->prev_node;
+        current_node = current_node->prev_n;
         free(current_node->next_node);
     }
     free(head_node);

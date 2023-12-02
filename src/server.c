@@ -77,10 +77,9 @@ int main(int argc, char* argv[]) {
     // Accept connections and create the client handling threads
     while (1){
 
-
-        if(workers_done != 0 && workers_done == worker_idx){
-            exit();
-        }
+        // if(workers_done != 0 && workers_done == worker_idx){
+        //     exit();
+        // }
         struct sockaddr_in clientaddr;
         socklen_t clientaddr_len = sizeof(clientaddr);
         conn_fd = accept(listen_fd, (struct sockaddr *) &clientaddr, &clientaddr_len); // accept a request from a client
@@ -92,22 +91,23 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, "Error creating worker thread.\n");
             return -1;
         }
+        pthread_detach(workerArray[idx]);
         
         worker_idx ++;
     }
     
 
     // Release any resources
-    for(int i = 0; i < worker_idx; i++){
-        if(pthread_join(workerArray[i], NULL) != 0){
-            fprintf(stderr, "Error joining worker thread.\n");
-            return -1;
-        }
-    }
+    // for(int i = 0; i < worker_idx; i++){
+    //     if(pthread_join(workerArray[i], NULL) != 0){
+    //         fprintf(stderr, "Error joining worker thread.\n");
+    //         return -1;
+    //     }
+    // }
 
     // close sockets
-    close(conn_fd); 
-    close(listen_fd);
+    // close(conn_fd); 
+    // close(listen_fd);
 
     return 0;
 }
