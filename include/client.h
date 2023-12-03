@@ -51,7 +51,7 @@
 
 /********************* [ Helpful Typedefs        ] ************************/
 
-const int PACKETSZ = sizeof(packet_t);
+
 
 typedef struct packet {
     unsigned char operation : 4;
@@ -60,6 +60,7 @@ typedef struct packet {
     // unsigned char checksum[SHA256_BLOCK_SIZE];
 } packet_t; 
 
+const int PACKETSZ = sizeof(packet_t);
 // serialize packet
 char *serializePacket(packet_t *packet){
     char *serializedData = (char *)malloc(sizeof(char) * PACKETSZ);
@@ -79,8 +80,8 @@ packet_t *deserializeData(char *serializedData){
 typedef struct request_queue {
     int rotation_angle;
     char *file_name;
-    request_t *next_node;
-    request_t *prev_node;
+    struct request_t *next_node;
+    struct request_t *prev_node;
 } request_t; 
 
 // typedef struct processing_args {

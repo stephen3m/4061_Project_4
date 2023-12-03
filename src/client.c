@@ -12,7 +12,7 @@ request_t *dequeue_request() {
         return NULL; // Queue is empty
     }
     request_t *ret_request = req_queue;
-    req_queue = req_queue->next;
+    req_queue = req_queue->next_node;
 
     if (req_queue == NULL) { // Queue had one object which was dequeued
         end_queue = NULL; 
@@ -26,17 +26,17 @@ void enqueue_request(int new_angle, char* file_path){
     if (new_request == NULL) { // Malloc error
         return;
     }
-    strcpy(new_request->file_path, file_path);
-    new_request->angle = new_angle;
-    new_request->next = NULL;
+    strcpy(new_request->file_name, file_path);
+    new_request->rotation_angle = new_angle;
+    new_request->next_node = NULL;
 
     if (req_queue == NULL){
         req_queue = new_request;
         end_queue = new_request;
     }
     else{
-        end_queue->next = new_request;
-        end_queue = end_queue->next;
+        end_queue->next_node = new_request;
+        end_queue = end_queue->next_node;
     }
 }
 
@@ -66,10 +66,10 @@ int send_file(int socket, const char *filename) {
     send(socket, &request_packet, sizeof(packet_t), 0); // do we need to error check this?
 
     // read in image data from file
-    char msg[size]; // to store all of the image data
+    char msg[BUFF_SIZE]; // to store all of the image data
     char buffer[BUFF_SIZE]; // 
     memset(buffer, 0, BUFF_SIZE);
-    memset(msg, size); // initialize msg with '\0'
+    memset(msg, 0, BUFF_SIZE); // initialize msg with '\0'
     while (read(fd, buffer, BUFF_SIZE) > 0) { // make sure to read in all data from file
         strcat(msg, buffer);
         memset(buffer, 0, BUFF_SIZE);
@@ -77,7 +77,7 @@ int send_file(int socket, const char *filename) {
 
     // send image data
     setbuf(stdin, NULL);
-    if(send(socket, msg, size, 0) == -1) // send message to server and error check
+    if(send(socket, msg, BUFF_SIZE, 0) == -1) // send message to server and error check
         perror("send error");
     
     fclose(fd);
@@ -103,14 +103,14 @@ int receive_file(int socket, const char *filename) {
     recv(socket, &response_packet, sizeof(packet_t), 0);
 
     // Receive the file data from clientHandler
-    int size = response_packet->size;
+    int size = response_packet.size;
     char msg[size]; // to store rotated image data
     bzero(msg, size); // initialize msg with '\0'
     if (recv(socket, msg, size, 0) == -1) // receive rotated image data and error check
         perror("recv error");
 
     // Write the data to the file
-    while()?
+    // while()?
 
 
     fclose(fd);
@@ -123,13 +123,18 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    char direct_path = [BUFF_SIZE];
+    char direct_path[BUFF_SIZE];
     memset(direct_path, 0, BUFF_SIZE);
     strcpy(direct_path, argv[2]);
     int angle = atoi(argv[3]);
+
+    char file_path[BUFF_SIZE];
+    memset(file_path, 0, BUFF_SIZE);
+    strcpy(file_path, argv[1]);
     
     // Set up socket
-    sockfd = socket(AF_INET, SOCK_STREAM, 0); // create socket to establish connection
+    
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0); // create socket to establish connection
     if(sockfd == -1)
         perror("socket error");
 
@@ -152,8 +157,14 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    DIR* file_directory = opendir(file_path);
+    if(file_directory == NULL){
+        fprintf(stderr, "Invalid output directory\n");
+        return -1;
+    }
+
     struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
+    while ((entry = readdir(file_directory)) != NULL) {
         // Skip the "." and ".." entries
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
@@ -163,7 +174,7 @@ int main(int argc, char* argv[]) {
         if (extension != NULL && strcmp(extension, ".png") == 0) { // check if file ends in ".png"
             char file_path[BUFF_SIZE*2]; // in the form "img/x/xxx.png"
             memset(file_path, 0, BUFF_SIZE*2);
-            sprintf(file_path, "%s/%s", directory_path, entry->d_name);
+            sprintf(file_path, "%s/%s", file_path, entry->d_name);
             enqueue_request(angle, file_path); // synchronization handled in enqueue_request
             
         }
@@ -192,7 +203,7 @@ int main(int argc, char* argv[]) {
     // }
 
     // INTER SUBMISSION
-    packet_t request_packet = {IMG_OP_ROTATE, '', htons(0)}
+    packet_t request_packet = {IMG_OP_ROTATE, IMG_FLAG_ROTATE_180, htons(0)};
     char *serializedData = serializePacket(&request_packet);
     if (send(sockfd, serializedData, sizeof(packet_t), 0) == -1)
         perror("send error\n");
@@ -204,12 +215,12 @@ int main(int argc, char* argv[]) {
     close(sockfd); // close socket
 
     // Release any resources
-    current_node = queue_end;
+    request_t *current_node = end_queue;
     while(current_node != NULL) {
-        current_node = current_node->prev_n;
+        current_node = current_node->prev_node;
         free(current_node->next_node);
     }
-    free(head_node);
+    free(req_queue);
 
     return 0;
 }

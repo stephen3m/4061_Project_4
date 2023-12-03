@@ -14,25 +14,24 @@ void *clientHandler(void *socket) {
 
     char recvdata[PACKETSZ];
     memset(recvdata, 0, PACKETSZ);
-    ret = recv(conn_fd, recvdata, PACKETSZ, 0);
+    int ret = recv((int)socket, recvdata, PACKETSZ, 0);
     if(ret == -1)
         perror("recv error");    
 
     // Determine the packet operatation and flags
     packet_t *recvpacket = deserializeData(recvdata);
 
-    while(recvpacket.operation != ntohl(IMG_OP_EXIT)){
-        ret = recv(conn_fd, recvdata, PACKETSZ, 0);
+    while(recvpacket->operation != ntohl(IMG_OP_EXIT)){
+        ret = recv((int)socket, recvdata, PACKETSZ, 0);
         if(ret == -1)
             perror("recv error");
             
         recvpacket = deserializeData(recvdata);    
 
         packet_t packet;
-        packet.operation = htons(PROTO_ACK);
-        strcpy(packet.data, recvpacket->data);
+        packet.operation = htonl(IMG_OP_ACK);
         char *serializedData = serializePacket(&packet);
-        ret = send(conn_fd, serializedData, PACKETSZ, 0); 
+        ret = send((int)socket, serializedData, PACKETSZ, 0); 
         if(ret == -1)
             perror("send error");
 

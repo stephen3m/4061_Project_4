@@ -54,7 +54,7 @@
 
 /********************* [ Helpful Typedefs        ] ************************/
 
-const int PACKETSZ = sizeof(packet_t);
+
 
 typedef struct packet {
     unsigned char operation : 4;
@@ -63,6 +63,7 @@ typedef struct packet {
     unsigned char checksum[SHA256_BLOCK_SIZE];
 } packet_t; 
 
+const int PACKETSZ = sizeof(packet_t);
 // serialize packet
 char *serializePacket(packet_t *packet){
     char *serializedData = (char *)malloc(sizeof(char) * PACKETSZ);
