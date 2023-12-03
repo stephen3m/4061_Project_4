@@ -174,6 +174,7 @@ int main(int argc, char* argv[]) {
         if (extension != NULL && strcmp(extension, ".png") == 0) { // check if file ends in ".png"
             char file_path[BUFF_SIZE*2]; // in the form "img/x/xxx.png"
             memset(file_path, 0, BUFF_SIZE*2);
+            // printf("%s/%s", file_path, entry->d_name);
             sprintf(file_path, "%s/%s", file_path, entry->d_name);
             enqueue_request(angle, file_path); // synchronization handled in enqueue_request
             
@@ -202,8 +203,13 @@ int main(int argc, char* argv[]) {
     //     current_node = current_node->next_node;
     // }
 
+    // {IMG_OP_ROTATE, IMG_FLAG_ROTATE_180, htons(0)}
     // INTER SUBMISSION
-    packet_t request_packet = {IMG_OP_ROTATE, IMG_FLAG_ROTATE_180, htons(0)};
+    packet_t *request_packet = malloc(sizeof(packet_t));
+    request_packet->operation = IMG_OP_ROTATE;
+    request_packet->flags = IMG_FLAG_ROTATE_180;
+    request_packet->size = htons(0);
+
     char *serializedData = serializePacket(&request_packet);
     if (send(sockfd, serializedData, sizeof(packet_t), 0) == -1)
         perror("send error\n");
@@ -213,14 +219,21 @@ int main(int argc, char* argv[]) {
     // send(sockfd, &request_packet, sizeof(packet_t), 0);
 
     close(sockfd); // close socket
-
+    request_t *current_node = req_queue;
+    // while (current_node != NULL){
+    //     printf("%s\n", current_node->file_name);
+    //     current_node = current_node->next_node;
+    // }
     // Release any resources
-    request_t *current_node = end_queue;
+    // current_node = req_queue;
     while(current_node != NULL) {
-        current_node = current_node->prev_node;
-        free(current_node->next_node);
+        request_t *temp_node = current_node;
+        current_node = current_node->next_node; // Move to next node before freeing the current
+        free(temp_node); // Now it's safe to free the node
     }
-    free(req_queue);
-
+    free(request_packet);
+    free(serializedData);
+    closedir(output_directory);
+    closedir(file_directory);
     return 0;
 }
