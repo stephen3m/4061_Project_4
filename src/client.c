@@ -21,7 +21,6 @@ request_t *dequeue_request() {
 }
 
 void enqueue_request(int new_angle, char* file_path){
-
     request_t *new_request = malloc(sizeof(request_t));
     if (new_request == NULL) { // Malloc error
         return;
@@ -112,7 +111,6 @@ int receive_file(int socket, const char *filename) {
     // Write the data to the file
     // while()?
 
-
     fclose(fd);
     return 0;
 }
@@ -123,17 +121,16 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Store main arguments in variables
     char direct_path[BUFF_SIZE];
     memset(direct_path, 0, BUFF_SIZE);
     strcpy(direct_path, argv[2]);
     int angle = atoi(argv[3]);
-
     char file_path[BUFF_SIZE];
     memset(file_path, 0, BUFF_SIZE);
     strcpy(file_path, argv[1]);
     
     // Set up socket
-    
     int sockfd = socket(AF_INET, SOCK_STREAM, 0); // create socket to establish connection
     if(sockfd == -1)
         perror("socket error");
@@ -151,12 +148,6 @@ int main(int argc, char* argv[]) {
     // Read the directory for all the images to rotate
     // Open the file path to output directory
     // Check if opendir is successful
-    DIR* output_directory = opendir(direct_path);
-    if(output_directory == NULL){
-        fprintf(stderr, "Invalid output directory\n");
-        return -1;
-    }
-
     DIR* file_directory = opendir(file_path);
     if(file_directory == NULL){
         fprintf(stderr, "Invalid output directory\n");
@@ -181,6 +172,14 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    
+
+    // Opening file path to output directory
+    // DIR* output_directory = opendir(direct_path);
+    // if(output_directory == NULL){
+    //     fprintf(stderr, "Invalid output directory\n");
+    //     return -1;
+    // }
     // Send the image data to the server
     /* Stephen: Here's a piazza post reply: 
     You can read an image into a buffer in the client. 
@@ -204,7 +203,8 @@ int main(int argc, char* argv[]) {
     // }
 
     // {IMG_OP_ROTATE, IMG_FLAG_ROTATE_180, htons(0)}
-    // INTER SUBMISSION
+
+    // INTER SUBMISSION: Send Package with IMG_OP_ROTATE
     packet_t *request_packet = malloc(sizeof(packet_t));
     request_packet->operation = IMG_OP_ROTATE;
     request_packet->flags = IMG_FLAG_ROTATE_180;
@@ -215,25 +215,20 @@ int main(int argc, char* argv[]) {
         perror("send error\n");
 
     // Terminate the connection once all images have been processed
-    // request_packet = packet_t request_packet = {IMG_OP_ROTATE, '', htons(0)}
-    // send(sockfd, &request_packet, sizeof(packet_t), 0);
-
     close(sockfd); // close socket
+
+    // Free mallocs and close opened directories
     request_t *current_node = req_queue;
-    // while (current_node != NULL){
-    //     printf("%s\n", current_node->file_name);
-    //     current_node = current_node->next_node;
-    // }
-    // Release any resources
-    // current_node = req_queue;
     while(current_node != NULL) {
         request_t *temp_node = current_node;
         current_node = current_node->next_node; // Move to next node before freeing the current
-        free(temp_node); // Now it's safe to free the node
+        free(temp_node);
     }
     free(request_packet);
     free(serializedData);
-    closedir(output_directory);
+    // closedir(output_directory);
     closedir(file_directory);
     return 0;
 }
+
+    
