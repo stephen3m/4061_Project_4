@@ -200,6 +200,12 @@ int main(int argc, char* argv[]) {
         receive_file(sockfd, filename);
     }
 
+    // tell clientHandler to die
+    packet_t request_packet = {IMG_OP_EXIT, "", htonl(0)};
+    char* serialized_data = serializePacket(&request_packet);
+    if (send(socket, serialized_data, sizeof(packet_t), 0) == -1)
+        perror("send error\n");
+
     // // INTER SUBMISSION: Send Package with IMG_OP_ROTATE
     // packet_t *request_packet = malloc(sizeof(packet_t));
     // request_packet->operation = IMG_OP_ROTATE;

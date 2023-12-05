@@ -59,8 +59,8 @@
 typedef struct packet {
     unsigned char operation : 4;
     unsigned char flags : 4;
-    unsigned int size;
-    unsigned char checksum[SHA256_BLOCK_SIZE];
+    unsigned long size;
+    // unsigned char checksum[SHA256_BLOCK_SIZE];
 } packet_t; 
 
 const int PACKETSZ = sizeof(packet_t);
