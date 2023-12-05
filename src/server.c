@@ -5,7 +5,7 @@
 #define BUFFER_SIZE 1024 
 
 // global vars
-pthread_t workerArray[1024];
+pthread_t workerArray[BUFFER_SIZE];
 int worker_idx = 0;
 int workers_done = 0;
 
@@ -36,7 +36,7 @@ void *clientHandler(void *socket) {
 
     }
 
-    workers_done ++;
+    workers_done++;
     // Receive the image data using the size
 
     // Process the image data based on the set of flags
@@ -79,32 +79,33 @@ int main(int argc, char* argv[]) {
         socklen_t clientaddr_len = sizeof(clientaddr);
         // accept a request from a client
         conn_fd = accept(listen_fd, (struct sockaddr *) &clientaddr, &clientaddr_len); 
-        if(conn_fd == -1)
+        if(conn_fd == -1) {
+            close(conn_fd); 
+            close(listen_fd);
             perror("accept error");
+        }
 
-        // INTER SUBMISSION
-        // Server receiving packet from client
-        char recvdata[PACKETSZ];
-        memset(recvdata, 0, PACKETSZ);
-        ret = recv(conn_fd, recvdata, PACKETSZ, 0); // receive data
-        if(ret == -1)
-            perror("recv err");
-
-        // FINAL SUBMISSION: in progress
-        // if(pthread_create(&workerArray[worker_idx], NULL, clientHandler, (void *)&conn_fd) != 0){
-        //     fprintf(stderr, "Error creating worker thread.\n");
-        //     return -1;
+        // // INTER SUBMISSION
+        // // Server receiving packet from client
+        // char recvdata[PACKETSZ];
+        // memset(recvdata, 0, PACKETSZ);
+        // ret = recv(conn_fd, recvdata, PACKETSZ, 0); // receive data
+        // if(ret == -1) {
+        //     close(conn_fd); 
+        //     close(listen_fd);
+        //     perror("recv err");
         // }
-        // pthread_detach(workerArray[idx]);
-        
-        // worker_idx++;
+
+        // FINAL SUBMISSION
+        if(pthread_create(&workerArray[worker_idx], NULL, clientHandler, (void *)&conn_fd) != 0){
+            fprintf(stderr, "Error creating worker thread.\n");
+            return -1;
+        }
+        pthread_detach(workerArray[worker_idx]);
+        worker_idx++;
     }
 
     // Release any resources
-
-    // close sockets (insert in error handling in while(1) loop)
-    // close(conn_fd); 
-    // close(listen_fd);
 
     return 0;
 }

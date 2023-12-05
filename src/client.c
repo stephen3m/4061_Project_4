@@ -42,10 +42,8 @@ void enqueue_request(int new_angle, char* file_path){
 int send_file(int socket, const char *filename) {
     // Open the file
     FILE *fd = fopen(filename, "r");
-    if (fd == NULL) {
-        perror("Error opening file");
-        return -1; 
-    }
+    if (fd == NULL) 
+        perror("Error opening file\n");
 
     // Set up the request packet for the server and send it
     request_t *cur_request = dequeue_request();
@@ -55,30 +53,48 @@ int send_file(int socket, const char *filename) {
 
     packet_t request_packet;
     request_packet.operation = IMG_OP_ROTATE;
-    if(cur_request->rotation_angle == 180){
+    if(cur_request->rotation_angle == 180)
         request_packet.flags = IMG_FLAG_ROTATE_180;
-    }
-    else if(cur_request->rotation_angle == 270){
+    else if(cur_request->rotation_angle == 270)
         request_packet.flags = IMG_FLAG_ROTATE_270;
-    }
-    // request_packet.flags =
-    send(socket, &request_packet, sizeof(packet_t), 0); // do we need to error check this?
+
+    fseek(fd, 0, SEEK_END); // calculate size of image and set packet accordingly
+    request_packet.size = htonl(ftell(fd));
+    fseek(fd, 0, SEEK_SET); // return filepointer to beginning for reading later
+
+    // serialize and send packet to clientHandler
+    char *serialized_data = serializePacket(&request_packet);
+    if (send(socket, serialized_data, sizeof(packet_t), 0) == -1)
+        perror("send error\n");
+
+    // wait to receive acknowledge packet before sending image data
+    char received_data[PACKETSZ];
+    memset(received_data, 0, PACKETSZ);
+    if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
+        perror("recv error\n");
+    
+    packet_t *received_packet = deserializeData(received_data);
+
+    if (received_packet->operation == IMG_OP_NAK)
+        return -3; // Server did not acknowledge image, skip this one
 
     // read in image data from file
-    char msg[BUFF_SIZE]; // to store all of the image data
-    char buffer[BUFF_SIZE]; // 
-    memset(buffer, 0, BUFF_SIZE);
+    char msg[BUFF_SIZE]; // to store image data
     memset(msg, 0, BUFF_SIZE); // initialize msg with '\0'
-    while (read(fd, buffer, BUFF_SIZE) > 0) { // make sure to read in all data from file
-        strcat(msg, buffer);
-        memset(buffer, 0, BUFF_SIZE);
+    while (read(fd, msg, BUFF_SIZE) > 0) { // read in data from file
+        // send image data
+        setbuf(stdin, NULL);
+        if(send(socket, msg, BUFF_SIZE, 0) == -1) // send message to server and error check
+            perror("send error\n");
+        memset(msg, 0, BUFF_SIZE); // clear buffer for next read
     }
 
-    // send image data
-    setbuf(stdin, NULL);
-    if(send(socket, msg, BUFF_SIZE, 0) == -1) // send message to server and error check
-        perror("send error");
-    
+    free(received_packet);
+    free(serialized_data);
+    free(cur_request);
+    received_packet = NULL;
+    serialized_data = NULL;
+    cur_request = NULL;
     fclose(fd);
     return 0;
 }
@@ -88,28 +104,24 @@ int receive_file(int socket, const char *filename) {
     // extract the actual filename out of *filename
     char *fname = strrchr(filename, "img"); // gets pointer to last occurrence of "img" from *filename
     char output_file[BUFF_SIZE];
-    sprintf(output_file, "/output%s", fname);
+    sprintf(output_file, "./output%s", fname);
 
     // Open the file
     FILE *fd = fopen(output_file, "w");
-    if (fd == NULL) {
-        perror("Error opening file");
-        return -1;
+    if (fd == NULL)
+        perror("Error opening file\n");
+    
+    char received_data[BUFF_SIZE + 1];
+    memset(received_data, 0, BUFF_SIZE);
+    while(1) {
+        if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
+            perror("recv error\n");
+        if (!strcmp(received_data, "END"))
+            break;
+        fwrite(received_data, sizeof(char), BUFF_SIZE, fd); // null terminator shenanigans might cause bugs
+        // TO DO! !@J!@$!@C$J@J$OP!@J $O!O@$P 
+        memset(received_data, 0, BUFF_SIZE);
     }
-
-    // Receive response packet
-    packet_t response_packet;
-    recv(socket, &response_packet, sizeof(packet_t), 0);
-
-    // Receive the file data from clientHandler
-    int size = response_packet.size;
-    char msg[size]; // to store rotated image data
-    bzero(msg, size); // initialize msg with '\0'
-    if (recv(socket, msg, size, 0) == -1) // receive rotated image data and error check
-        perror("recv error");
-
-    // Write the data to the file
-    // while()?
 
     fclose(fd);
     return 0;
@@ -133,7 +145,7 @@ int main(int argc, char* argv[]) {
     // Set up socket
     int sockfd = socket(AF_INET, SOCK_STREAM, 0); // create socket to establish connection
     if(sockfd == -1)
-        perror("socket error");
+        perror("socket error\n");
 
     struct sockaddr_in servaddr;
     servaddr.sin_family = AF_INET; // IPv4
@@ -143,7 +155,7 @@ int main(int argc, char* argv[]) {
     // Connect the socket
     int ret = connect(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr)); // establish connection to server
     if(ret == -1)
-        perror("connect error");
+        perror("connect error\n");
 
     // Read the directory for all the images to rotate
     // Open the file path to output directory
@@ -172,61 +184,38 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    
+    while(1) {
+        // get path of current image
+        char filename[BUFF_SIZE];
+        strcpy(filename, req_queue->file_name);
 
-    // Opening file path to output directory
-    // DIR* output_directory = opendir(direct_path);
-    // if(output_directory == NULL){
-    //     fprintf(stderr, "Invalid output directory\n");
-    //     return -1;
-    // }
-    // Send the image data to the server
-    /* Stephen: Here's a piazza post reply: 
-    You can read an image into a buffer in the client. 
-    Then, send the buffer directly to the server. 
-    The server then creates a temporary file to store the buffer. 
-    Now, you can use stbi_laod() and any other operations we did in PA3 to rotate the image.
-    */
+        // send metadata and image data to clientHandler
+        int send_results = send_file(sockfd, filename);
+        if (send_results == -2) // if reached end of queue, break from loop
+            break;
+        else if (send_results == -3) // Skip this image, continue with rest of queue
+            continue;
 
-    // while(1) {
-    //     // Check that the request was acknowledged
-    //     int send_results = send_file(sockfd, current_node->file_name);
-    //     if (send_results == -2)
-    //         break; // if reached end of queue, break from loop
-    //     else if (send_results == -1) // how to handle unable to open file?
-    //         continue;
+        // Receive the processed image and save it in the output dir
+        receive_file(sockfd, filename);
+    }
 
-    //     // Receive the processed image and save it in the output dir
-    //     receive_file(sockfd, current_node->file_name);
+    // // INTER SUBMISSION: Send Package with IMG_OP_ROTATE
+    // packet_t *request_packet = malloc(sizeof(packet_t));
+    // request_packet->operation = IMG_OP_ROTATE;
+    // request_packet->flags = IMG_FLAG_ROTATE_180;
+    // request_packet->size = htons(0);
 
-    //     current_node = current_node->next_node;
-    // }
-
-    // {IMG_OP_ROTATE, IMG_FLAG_ROTATE_180, htons(0)}
-
-    // INTER SUBMISSION: Send Package with IMG_OP_ROTATE
-    packet_t *request_packet = malloc(sizeof(packet_t));
-    request_packet->operation = IMG_OP_ROTATE;
-    request_packet->flags = IMG_FLAG_ROTATE_180;
-    request_packet->size = htons(0);
-
-    char *serializedData = serializePacket(&request_packet);
-    if (send(sockfd, serializedData, sizeof(packet_t), 0) == -1)
-        perror("send error\n");
+    // char *serializedData = serializePacket(&request_packet);
+    // if (send(sockfd, serializedData, sizeof(packet_t), 0) == -1)
+    //     perror("send error\n");
 
     // Terminate the connection once all images have been processed
     close(sockfd); // close socket
 
     // Free mallocs and close opened directories
-    request_t *current_node = req_queue;
-    while(current_node != NULL) {
-        request_t *temp_node = current_node;
-        current_node = current_node->next_node; // Move to next node before freeing the current
-        free(temp_node);
-    }
-    free(request_packet);
-    free(serializedData);
     // closedir(output_directory);
+
     closedir(file_directory);
     return 0;
 }

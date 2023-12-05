@@ -56,7 +56,7 @@
 typedef struct packet {
     unsigned char operation : 4;
     unsigned char flags : 4;
-    unsigned int size;
+    unsigned long size;
     // unsigned char checksum[SHA256_BLOCK_SIZE];
 } packet_t; 
 
@@ -81,7 +81,6 @@ typedef struct request_queue {
     int rotation_angle;
     char file_name[BUFF_SIZE];
     struct request_t *next_node;
-    struct request_t *prev_node;
 } request_t; 
 
 // typedef struct processing_args {
