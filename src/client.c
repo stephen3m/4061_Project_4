@@ -104,6 +104,7 @@ int receive_file(int socket, const char *filename) {
     // extract the actual filename out of *filename
     char *fname = strrchr(filename, "img"); // gets pointer to last occurrence of "img" from *filename
     char output_file[BUFF_SIZE];
+    memset(output_file, 0, BUFF_SIZE);
     sprintf(output_file, "./output%s", fname);
 
     // Open the file
@@ -112,7 +113,7 @@ int receive_file(int socket, const char *filename) {
         perror("Error opening file\n");
     
     char received_data[BUFF_SIZE + 1];
-    memset(received_data, 0, BUFF_SIZE);
+    memset(received_data, 0, BUFF_SIZE + 1);
     while(1) {
         if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
             perror("recv error\n");
@@ -187,6 +188,7 @@ int main(int argc, char* argv[]) {
     while(1) {
         // get path of current image
         char filename[BUFF_SIZE];
+        memset(filename, 0, BUFF_SIZE);
         strcpy(filename, req_queue->file_name);
 
         // send metadata and image data to clientHandler
@@ -220,7 +222,6 @@ int main(int argc, char* argv[]) {
     close(sockfd); // close socket
 
     // Free mallocs and close opened directories
-    // closedir(output_directory);
 
     closedir(file_directory);
     return 0;
