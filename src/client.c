@@ -43,7 +43,7 @@ int send_file(int socket, const char *filename) {
     // Open the file
     FILE *fd = fopen(filename, "r");
     if (fd == NULL) 
-        perror("Error opening file\n");
+        perror("Error opening file");
 
     // Set up the request packet for the server and send it
     request_t *cur_request = dequeue_request();
@@ -65,27 +65,27 @@ int send_file(int socket, const char *filename) {
     // serialize and send packet to clientHandler
     char *serialized_data = serializePacket(&request_packet);
     if (send(socket, serialized_data, sizeof(packet_t), 0) == -1)
-        perror("send error\n");
+        perror("send error");
 
     // wait to receive acknowledge packet before sending image data
     char received_data[PACKETSZ];
     memset(received_data, 0, PACKETSZ);
     if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
-        perror("recv error\n");
+        perror("recv error");
     
     packet_t *received_packet = deserializeData(received_data);
 
     if (received_packet->operation == IMG_OP_NAK)
         return -3; // Server did not acknowledge image, skip this one
 
-    // read in image data from file
+    // read chunks of image data from file into buffer and send to server (clientHandler) 
     char msg[BUFF_SIZE]; // to store image data
     memset(msg, 0, BUFF_SIZE); // initialize msg with '\0'
-    while (read(fd, msg, BUFF_SIZE) > 0) { // read in data from file
+    while (fread(fd, msg, BUFF_SIZE) > 0) { // Stephen: it's fine to use fread here @piazza 739
         // send image data
         setbuf(stdin, NULL);
         if(send(socket, msg, BUFF_SIZE, 0) == -1) // send message to server and error check
-            perror("send error\n");
+            perror("send error");
         memset(msg, 0, BUFF_SIZE); // clear buffer for next read
     }
 
@@ -110,17 +110,16 @@ int receive_file(int socket, const char *filename) {
     // Open the file
     FILE *fd = fopen(output_file, "w");
     if (fd == NULL)
-        perror("Error opening file\n");
+        perror("Error opening file");
     
     char received_data[BUFF_SIZE + 1];
     memset(received_data, 0, BUFF_SIZE + 1);
     while(1) {
         if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
-            perror("recv error\n");
+            perror("recv error");
         if (!strcmp(received_data, "END"))
             break;
-        fwrite(received_data, sizeof(char), BUFF_SIZE, fd); // null terminator shenanigans might cause bugs
-        // TO DO! !@J!@$!@C$J@J$OP!@J $O!O@$P 
+        fwrite(received_data, sizeof(char), BUFF_SIZE, fd); // TODO: null terminator might cause bugs
         memset(received_data, 0, BUFF_SIZE);
     }
 
@@ -146,7 +145,7 @@ int main(int argc, char* argv[]) {
     // Set up socket
     int sockfd = socket(AF_INET, SOCK_STREAM, 0); // create socket to establish connection
     if(sockfd == -1)
-        perror("socket error\n");
+        perror("socket error");
 
     struct sockaddr_in servaddr;
     servaddr.sin_family = AF_INET; // IPv4
@@ -156,7 +155,7 @@ int main(int argc, char* argv[]) {
     // Connect the socket
     int ret = connect(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr)); // establish connection to server
     if(ret == -1)
-        perror("connect error\n");
+        perror("connect error");
 
     // Read the directory for all the images to rotate
     // Open the file path to output directory
@@ -206,20 +205,10 @@ int main(int argc, char* argv[]) {
     packet_t request_packet = {IMG_OP_EXIT, "", htonl(0)};
     char* serialized_data = serializePacket(&request_packet);
     if (send(socket, serialized_data, sizeof(packet_t), 0) == -1)
-        perror("send error\n");
-
-    // // INTER SUBMISSION: Send Package with IMG_OP_ROTATE
-    // packet_t *request_packet = malloc(sizeof(packet_t));
-    // request_packet->operation = IMG_OP_ROTATE;
-    // request_packet->flags = IMG_FLAG_ROTATE_180;
-    // request_packet->size = htons(0);
-
-    // char *serializedData = serializePacket(&request_packet);
-    // if (send(sockfd, serializedData, sizeof(packet_t), 0) == -1)
-    //     perror("send error\n");
+        perror("send error");
 
     // Terminate the connection once all images have been processed
-    close(sockfd); // close socket
+    close(sockfd);
 
     // Free mallocs and close opened directories
 

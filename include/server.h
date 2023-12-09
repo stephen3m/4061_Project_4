@@ -54,8 +54,6 @@
 
 /********************* [ Helpful Typedefs        ] ************************/
 
-
-
 typedef struct packet {
     unsigned char operation : 4;
     unsigned char flags : 4;
@@ -64,7 +62,7 @@ typedef struct packet {
 } packet_t; 
 
 const int PACKETSZ = sizeof(packet_t);
-// serialize packet
+
 char *serializePacket(packet_t *packet){
     char *serializedData = (char *)malloc(sizeof(char) * PACKETSZ);
     memset(serializedData, 0, PACKETSZ);
@@ -72,17 +70,11 @@ char *serializePacket(packet_t *packet){
     return serializedData;
 }
 
-// deserialize data
 packet_t *deserializeData(char *serializedData){
     packet_t *packet = (packet_t *)malloc(sizeof(packet_t));
     memset(packet, 0, PACKETSZ);
     memcpy(packet, serializedData, PACKETSZ);
     return packet;
 }
-
-// typedef struct processing_args {
-//     int number_worker;
-//     char *file_name;
-// } processing_args_t;
 
 #endif
