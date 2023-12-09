@@ -119,11 +119,14 @@ int receive_file(int socket, const char *filename) {
     char received_data[BUFF_SIZE + 1];
     memset(received_data, 0, BUFF_SIZE + 1);
     while(1) {
+        // TODO: Just a question. Is received_data supposed to be the rotated_file file name OR "END"?
         if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
             perror("recv error");
+        // TODO: sending "END" not implemented in server's clientHandler end yet
         if (!strcmp(received_data, "END"))
             break;
-        fwrite(received_data, sizeof(char), BUFF_SIZE, fd); // TODO: null terminator might cause bugs
+        // TODO: null terminator might cause bugs
+        fwrite(received_data, sizeof(char), BUFF_SIZE, fd); 
         memset(received_data, 0, BUFF_SIZE);
     }
 
@@ -184,7 +187,6 @@ int main(int argc, char* argv[]) {
             // printf("%s/%s", file_path, entry->d_name);
             sprintf(file_path, "%s/%s", file_path, entry->d_name);
             enqueue_request(angle, file_path); // synchronization handled in enqueue_request
-            
         }
     }
 
@@ -215,7 +217,6 @@ int main(int argc, char* argv[]) {
     close(sockfd);
 
     // Free mallocs and close opened directories
-
     closedir(file_directory);
     return 0;
 }

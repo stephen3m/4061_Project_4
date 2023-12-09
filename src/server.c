@@ -19,8 +19,11 @@ void *clientHandler(void *socket) {
     char *serialized_ack = serializePacket(&ack_packet);
 
     // TODO Stephen: where do we get the file names from? Also what exactly are these used for? 
-    // TODO Stephen pt 2.: do we need rotated_file if it's only used for "stbi_write_png(rotated_file,..." which 
-    // TODO Stephen pt 3.: saves the processed img to rotated_file. Doesn't client.c receive file do that?
+    // do we need rotated_file if it's only used for "stbi_write_png(rotated_file,..." which 
+    // saves the processed img to rotated_file. Doesn't client.c receive file do that?
+    // Does filename store the image data (stream of bytes) which is written in a temp file in client?
+    // Then, is rotated_file used to store the processed image data (stream of bytes) which is written in a temp file here?
+    // How do we send the client the rotated_file file name?
     char filename[BUFF_SIZE]; 
     char rotated_file[BUFFER_SIZE]; 
 
@@ -118,6 +121,11 @@ void *clientHandler(void *socket) {
         result_matrix = NULL;
         img_matrix = NULL;
         img_array = NULL;
+
+        // TODO: Related to TODO on line 21
+        // Send rotated_file file name to client
+
+        // TODO: Send "END"? What's the condition for sending "END"?
     }
 
     if (fclose(fd) == -1)
