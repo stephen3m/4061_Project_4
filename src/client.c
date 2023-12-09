@@ -3,7 +3,7 @@
 #define PORT 4891
 #define BUFFER_SIZE 1024 
 
-// global vars
+// Global vars
 request_t *req_queue = NULL;
 request_t *end_queue = NULL;
 
@@ -39,6 +39,7 @@ void enqueue_request(int new_angle, char* file_path){
     }
 }
 
+// returns -2 when end of queue is reached; returns -3 if IMG_OP_NAK was received by server
 int send_file(int socket, const char *filename) {
     // Open the file
     FILE *fd = fopen(filename, "r");
@@ -80,8 +81,8 @@ int send_file(int socket, const char *filename) {
 
     // read chunks of image data from file into buffer and send to server (clientHandler) 
     char msg[BUFF_SIZE]; // to store image data
-    memset(msg, 0, BUFF_SIZE); // initialize msg with '\0'
-    while (fread(fd, msg, BUFF_SIZE) > 0) { // Stephen: it's fine to use fread here @piazza 739
+    memset(msg, 0, BUFF_SIZE); 
+    while (fread(fd, msg, BUFF_SIZE) > 0) { 
         // send image data
         setbuf(stdin, NULL);
         if(send(socket, msg, BUFF_SIZE, 0) == -1) // send message to server and error check
@@ -100,12 +101,15 @@ int send_file(int socket, const char *filename) {
 }
 
 int receive_file(int socket, const char *filename) {
-    // need filename in /output instead of /img [turning /img/.../file.png -> /output/.../file.png]
-    // extract the actual filename out of *filename
-    char *fname = strrchr(filename, "img"); // gets pointer to last occurrence of "img" from *filename
+    // we want to convert ./img/x/xx.png to ./output/x/xx.png
+    char *fname = strstr(filename, "img"); // gets pointer to "img" in filename
     char output_file[BUFF_SIZE];
     memset(output_file, 0, BUFF_SIZE);
-    sprintf(output_file, "./output%s", fname);
+    if (fname != NULL) {
+        sprintf(output_file, "./output/%s", fname + strlen("img")); // E.g. output_file would be "./output/0/4511.png" if fname is "img/0/4511.png"
+    } else {
+        perror("Substring 'img' not found in filename");
+    }
 
     // Open the file
     FILE *fd = fopen(output_file, "w");
