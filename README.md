@@ -36,7 +36,7 @@ client:
     connect socket to server  
     open directory  
     while(directory has entry):  
-      enqueue png entry to queue  
+      &ensp; enqueue png entry to queue  
     while(1):  
       call send_file  
       call receive_file  
