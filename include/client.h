@@ -74,7 +74,7 @@ packet_t *deserializeData(char *serializedData){
     return packet;
 }
 
-typedef struct request_queue {
+typedef struct request_t {
     int rotation_angle;
     char file_name[BUFF_SIZE];
     struct request_t *next_node;

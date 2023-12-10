@@ -40,11 +40,12 @@ void enqueue_request(int new_angle, char* file_path){
 }
 
 // returns -2 when end of queue is reached; returns -3 if IMG_OP_NAK was received by server
-int send_file(int socket, const char *filename) {
+int send_file(int socket, char *filename) {
     // Open the file
+    printf("%s\n", filename);
     FILE *fd = fopen(filename, "r");
     if (fd == NULL) 
-        perror("Error opening file");
+        perror("Error opening file for sending");
 
     // Set up the request packet for the server and send it
     request_t *cur_request = dequeue_request();
@@ -82,7 +83,7 @@ int send_file(int socket, const char *filename) {
     // read chunks of image data from file into buffer and send to server (clientHandler) 
     char msg[BUFF_SIZE]; // to store image data
     memset(msg, 0, BUFF_SIZE); 
-    while (fread(fd, msg, BUFF_SIZE) > 0) { 
+    while (fread(msg, sizeof(char), BUFF_SIZE, fd) > 0) { 
         // send image data
         setbuf(stdin, NULL);
         if(send(socket, msg, BUFF_SIZE, 0) == -1) // send message to server and error check
@@ -120,6 +121,8 @@ int receive_file(int socket, const char *filename) {
     memset(received_data, 0, BUFF_SIZE + 1);
     while(1) {
         // TODO: Just a question. Is received_data supposed to be the rotated_file file name OR "END"?
+        // - it should be the rotated file DATA i.e. the bytes that make up the image itself
+        // - otherwise, it will be END showing that the server has finished sending all the image data
         if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
             perror("recv error");
         // TODO: sending "END" not implemented in server's clientHandler end yet
@@ -182,11 +185,11 @@ int main(int argc, char* argv[]) {
         // Enqueue for ".png" files
         char *extension = strrchr(entry->d_name, '.'); // gets pointer to last occurrence of "." in entry->d_name
         if (extension != NULL && strcmp(extension, ".png") == 0) { // check if file ends in ".png"
-            char file_path[BUFF_SIZE*2]; // in the form "img/x/xxx.png"
-            memset(file_path, 0, BUFF_SIZE*2);
+            char full_file_path[BUFF_SIZE*2]; // in the form "img/x/xxx.png"
+            memset(full_file_path, 0, BUFF_SIZE*2);
             // printf("%s/%s", file_path, entry->d_name);
-            sprintf(file_path, "%s/%s", file_path, entry->d_name);
-            enqueue_request(angle, file_path); // synchronization handled in enqueue_request
+            sprintf(full_file_path, "%s/%s", file_path, entry->d_name);
+            enqueue_request(angle, full_file_path); // synchronization handled in enqueue_request
         }
     }
 
@@ -208,9 +211,9 @@ int main(int argc, char* argv[]) {
     }
 
     // tell clientHandler to die
-    packet_t request_packet = {IMG_OP_EXIT, "", htonl(0)};
+    packet_t request_packet = {IMG_OP_EXIT, IMG_FLAG_CHECKSUM, htonl(0)};
     char* serialized_data = serializePacket(&request_packet);
-    if (send(socket, serialized_data, sizeof(packet_t), 0) == -1)
+    if (send(sockfd, serialized_data, sizeof(packet_t), 0) == -1)
         perror("send error");
 
     // Terminate the connection once all images have been processed

@@ -9,42 +9,59 @@ pthread_t workerArray[BUFFER_SIZE];
 int worker_idx = 0;
 int workers_done = 0;
 
-void *clientHandler(void *socket) {
+void *clientHandler(void *input_socket) {
     // Create error packet: used to send IMG_OP_NAK
-    packet_t error_packet = {IMG_OP_NAK, "", htonl(0)};
+    packet_t error_packet = {IMG_OP_NAK, IMG_FLAG_ENCRYPTED, htonl(0)};
     char *serialized_error = serializePacket(&error_packet);
 
     // Create ack packet: use to send IMG_OP_ACK
-    packet_t ack_packet = {IMG_OP_ACK, "", htonl(0)};
+    packet_t ack_packet = {IMG_OP_ACK, IMG_FLAG_ENCRYPTED, htonl(0)};
     char *serialized_ack = serializePacket(&ack_packet);
 
     // TODO Stephen: where do we get the file names from? Also what exactly are these used for? 
+    // - filename is simply the temp file to save the received data from client to use in STBI stuff
+
     // do we need rotated_file if it's only used for "stbi_write_png(rotated_file,..." which 
     // saves the processed img to rotated_file. Doesn't client.c receive file do that?
+    // - we need to save the rotated data into a file that we can then read and send over to client
+    // - this is thanks to needing to use the stbi functions, which only work on files
+
+
     // Does filename store the image data (stream of bytes) which is written in a temp file in client?
     // Then, is rotated_file used to store the processed image data (stream of bytes) which is written in a temp file here?
     // How do we send the client the rotated_file file name?
+    // - both of these are helpers for server, they will not be interacted with client in anyway
+    
+    
+    // filename is the name of the temp file we will be writing the inital received data from client to
+    // rot_file will be the name of the temp file we will write to with stbi_write, stores rotated image data
+    // we will then read rot_file and send the byte stream over to client like how client sent data to server inti
     char filename[BUFF_SIZE]; 
     char rotated_file[BUFFER_SIZE]; 
+
+    sprintf(filename, "temp_file%ld", pthread_self()); // will be smth like temp_file1 or 2 or 3...
+    sprintf(filename, "rotated_image_data%ld", pthread_self()); // rotated_image_data1 or 2 or 3...
+
+    int *socket = (int*) input_socket;
 
     FILE *fd = fopen(filename, "r");
     if (fd == NULL) {
         // send IMG_OP_NAK, don't need to call exit since client will handle that when it receives IMG_OP_NAK
-        send(socket, serialized_error, sizeof(packet_t), 0);
+        send(*socket, serialized_error, sizeof(packet_t), 0);
     }
     
     FILE *rot_fd = fopen(rotated_file, "w");
     if (rot_fd == NULL) {
-        send(socket, serialized_error, sizeof(packet_t), 0);
+        send(*socket, serialized_error, sizeof(packet_t), 0);
     }
 
     while(1) {
         // Receive packet from the client
         char recvdata[PACKETSZ];
         memset(recvdata, 0, PACKETSZ);
-        int ret = recv((int)socket, recvdata, PACKETSZ, 0);
+        int ret = recv(*socket, recvdata, PACKETSZ, 0);
         if(ret == -1) {
-            send(socket, serialized_error, sizeof(packet_t), 0); 
+            send(*socket, serialized_error, sizeof(packet_t), 0); 
         }
 
         // Determine the packet operatation and flags, send acknowledgement
@@ -53,8 +70,8 @@ void *clientHandler(void *socket) {
         if (recvpacket->operation == IMG_OP_EXIT) // received IMG_OP_EXIT from client
             break;
         else if (recvpacket->operation == IMG_OP_ROTATE) {
-            if (send(socket, serialized_ack, sizeof(packet_t), 0) == -1)
-                send(socket, serialized_error, sizeof(packet_t), 0);
+            if (send(*socket, serialized_ack, sizeof(packet_t), 0) == -1)
+                send(*socket, serialized_error, sizeof(packet_t), 0);
             if (recvpacket->flags == IMG_FLAG_ROTATE_180)
                 angle = 180;
             else if (recvpacket->flags == IMG_FLAG_ROTATE_270)
@@ -62,13 +79,20 @@ void *clientHandler(void *socket) {
         }
 
         // Receive the image data using the size
-        long bytes_read = 0;
+        long total_bytes_read = 0;
+        int bytes_read = 0;
         char imgData[BUFF_SIZE + 1]; // +1 for null terminator
         memset(imgData, 0, BUFF_SIZE);
-        while(bytes_read < recvpacket->size) {
-            if (recv((int)socket, imgData, PACKETSZ, 0) == -1)
-                send(socket, serialized_error, sizeof(packet_t), 0);
+        while(total_bytes_read < recvpacket->size) {
+            // get data from client
+            bytes_read = recv(*socket, imgData, PACKETSZ, 0);
+            if (bytes_read == -1)
+                send(*socket, serialized_error, sizeof(packet_t), 0);
+            
+            // write received data to temp file
             fwrite(imgData, sizeof(char), BUFF_SIZE, fd);
+            // prepare for next iteration
+            total_bytes_read += bytes_read;
             memset(imgData, 0, BUFF_SIZE);
         }
 
@@ -122,10 +146,22 @@ void *clientHandler(void *socket) {
         img_matrix = NULL;
         img_array = NULL;
 
-        // TODO: Related to TODO on line 21
-        // Send rotated_file file name to client
+        
+        // Send rotated_file data to client
+        char msg[BUFF_SIZE]; // to store image data
+        memset(msg, 0, BUFF_SIZE); 
+        while (fread(msg, sizeof(char), BUFF_SIZE, rot_fd) > 0) { 
+            // send image data
+            setbuf(stdin, NULL);
+            if(send(*socket, msg, BUFF_SIZE, 0) == -1) // send message to server and error check
+                send(*socket, serialized_error, sizeof(packet_t), 0);
+            memset(msg, 0, BUFF_SIZE); // clear buffer for next read
+        }
 
-        // TODO: Send "END"? What's the condition for sending "END"?
+        // once done sending image data, send "END" to client to signal EOF
+        strcpy(msg, "END");
+        if(send(*socket, msg, BUFF_SIZE, 0) == -1) // send message to server and error check
+                send(*socket, serialized_error, sizeof(packet_t), 0);
     }
 
     if (fclose(fd) == -1)
@@ -153,7 +189,7 @@ int main(int argc, char* argv[]) {
 
     // Populating servaddr fields
     struct sockaddr_in servaddr;
-    bzero(&servaddr, sizeof(servaddr));
+    memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET; // IPv4
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY); // Listen to any of the network interface (INADDR_ANY)
     servaddr.sin_port = htons(PORT); // Port number
@@ -186,7 +222,7 @@ int main(int argc, char* argv[]) {
         if(pthread_create(&workerArray[worker_idx], NULL, clientHandler, (void *)&conn_fd) != 0){
             close(conn_fd); 
             close(listen_fd);
-            perror("Error creating worker thread")
+            perror("Error creating worker thread");
         }
         pthread_detach(workerArray[worker_idx]);
         worker_idx++;
