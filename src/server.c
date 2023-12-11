@@ -26,18 +26,18 @@ void *clientHandler(void *input_socket) {
     memset(filename, 0, BUFF_SIZE);
     memset(rotated_file, 0, BUFF_SIZE);
 
-    sprintf(filename, "temp_file%ld", pthread_self()); // will be smth like temp_file1 or 2 or 3...
-    sprintf(rotated_file, "rotated_image_data%ld", pthread_self()); // rotated_image_data1 or 2 or 3...
+    sprintf(filename, "temp_file%ld", pthread_self()); // filename will be temp_fileX where X is thread ID
+    sprintf(rotated_file, "rotated_image_data%ld", pthread_self()); // filename rotated_image_dataX
 
     int *socket = (int*) input_socket;
 
-    FILE *fd = fopen(filename, "r");
+    FILE *fd = fopen(filename, "w");
     if (fd == NULL) {
         // send IMG_OP_NAK, don't need to call exit since client will handle that when it receives IMG_OP_NAK
         send(*socket, serialized_error, sizeof(packet_t), 0);
     }
     
-    FILE *rot_fd = fopen(rotated_file, "w");
+    FILE *rot_fd = fopen(rotated_file, "r");
     if (rot_fd == NULL) {
         send(*socket, serialized_error, sizeof(packet_t), 0);
     }
@@ -57,7 +57,7 @@ void *clientHandler(void *input_socket) {
         if (recvpacket->operation == IMG_OP_EXIT) // received IMG_OP_EXIT from client
             break;
         else if (recvpacket->operation == IMG_OP_ROTATE) {
-            if (send(*socket, serialized_ack, sizeof(packet_t), 0) == -1)
+            if (send(*socket, serialized_ack, sizeof(packet_t), 0) == -1) // send IMG_OP_ACK
                 send(*socket, serialized_error, sizeof(packet_t), 0);
             if (recvpacket->flags == IMG_FLAG_ROTATE_180)
                 angle = 180;
@@ -77,7 +77,7 @@ void *clientHandler(void *input_socket) {
                 send(*socket, serialized_error, sizeof(packet_t), 0);
             
             // write received data to temp file
-            printf("%s\n", imgData);
+            printf("%s\n", imgData); // Stephen TODO: is this supposed to be \n or \0?
             fwrite(imgData, sizeof(char), BUFF_SIZE, fd);
             // prepare for next iteration
             total_bytes_read += bytes_read;
@@ -88,7 +88,7 @@ void *clientHandler(void *input_socket) {
                 send(*socket, serialized_error, sizeof(packet_t), 0);
         }
 
-        printf("death\n");
+        printf("image data has been written to temp fiel\n");
 
         // Process the image data based on the set of flags
         // Stbi_load loads in an image from specified location; populates width, height, and bpp with values
@@ -150,12 +150,12 @@ void *clientHandler(void *input_socket) {
         // once done sending image data, send "END" to client to signal EOF
         strcpy(msg, "END");
         if(send(*socket, msg, BUFF_SIZE, 0) == -1) // send message to server and error check
-                send(*socket, serialized_error, sizeof(packet_t), 0);
+            send(*socket, serialized_error, sizeof(packet_t), 0);
     }
 
-    if (fclose(fd) == -1)
+    if (fclose(fd) != 0)
         perror("issue closing temp file");
-    if (fclose(rot_fd) == -1)
+    if (fclose(rot_fd) != 0)
         perror("issue closing temp rot file");
 
     // delete temp files
