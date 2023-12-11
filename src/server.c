@@ -37,10 +37,12 @@ void *clientHandler(void *input_socket) {
     // rot_file will be the name of the temp file we will write to with stbi_write, stores rotated image data
     // we will then read rot_file and send the byte stream over to client like how client sent data to server inti
     char filename[BUFF_SIZE]; 
-    char rotated_file[BUFFER_SIZE]; 
+    char rotated_file[BUFFER_SIZE];
+    memset(filename, 0, BUFF_SIZE);
+    memset(rotated_file, 0, BUFF_SIZE);
 
     sprintf(filename, "temp_file%ld", pthread_self()); // will be smth like temp_file1 or 2 or 3...
-    sprintf(filename, "rotated_image_data%ld", pthread_self()); // rotated_image_data1 or 2 or 3...
+    sprintf(rotated_file, "rotated_image_data%ld", pthread_self()); // rotated_image_data1 or 2 or 3...
 
     int *socket = (int*) input_socket;
 
@@ -82,19 +84,26 @@ void *clientHandler(void *input_socket) {
         long total_bytes_read = 0;
         int bytes_read = 0;
         char imgData[BUFF_SIZE + 1]; // +1 for null terminator
-        memset(imgData, 0, BUFF_SIZE);
+        memset(imgData, 0, BUFF_SIZE + 1);
         while(total_bytes_read < recvpacket->size) {
             // get data from client
-            bytes_read = recv(*socket, imgData, PACKETSZ, 0);
+            bytes_read = recv(*socket, imgData, BUFF_SIZE, 0);
             if (bytes_read == -1)
                 send(*socket, serialized_error, sizeof(packet_t), 0);
             
             // write received data to temp file
+            printf("%s\n", imgData);
             fwrite(imgData, sizeof(char), BUFF_SIZE, fd);
             // prepare for next iteration
             total_bytes_read += bytes_read;
-            memset(imgData, 0, BUFF_SIZE);
+            memset(imgData, 0, BUFF_SIZE + 1);
+
+            // send back ack packet to client for sending next data chunk
+            if (send(*socket, serialized_ack, sizeof(packet_t), 0) == -1)
+                send(*socket, serialized_error, sizeof(packet_t), 0);
         }
+
+        printf("death\n");
 
         // Process the image data based on the set of flags
         // Stbi_load loads in an image from specified location; populates width, height, and bpp with values
@@ -152,7 +161,6 @@ void *clientHandler(void *input_socket) {
         memset(msg, 0, BUFF_SIZE); 
         while (fread(msg, sizeof(char), BUFF_SIZE, rot_fd) > 0) { 
             // send image data
-            setbuf(stdin, NULL);
             if(send(*socket, msg, BUFF_SIZE, 0) == -1) // send message to server and error check
                 send(*socket, serialized_error, sizeof(packet_t), 0);
             memset(msg, 0, BUFF_SIZE); // clear buffer for next read
@@ -218,14 +226,15 @@ int main(int argc, char* argv[]) {
             perror("accept encountered error");
         }
 
-        // create a handling thread for the client
-        if(pthread_create(&workerArray[worker_idx], NULL, clientHandler, (void *)&conn_fd) != 0){
-            close(conn_fd); 
-            close(listen_fd);
-            perror("Error creating worker thread");
-        }
-        pthread_detach(workerArray[worker_idx]);
-        worker_idx++;
+        // // create a handling thread for the client
+        // if(pthread_create(&workerArray[worker_idx], NULL, clientHandler, (void *)&conn_fd) != 0){
+        //     close(conn_fd); 
+        //     close(listen_fd);
+        //     perror("Error creating worker thread");
+        // }
+        // pthread_detach(workerArray[worker_idx]);
+        // worker_idx++;
+        clientHandler((void *)&conn_fd);
     }
 
     return 0;

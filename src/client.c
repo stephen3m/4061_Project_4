@@ -42,7 +42,7 @@ void enqueue_request(int new_angle, char* file_path){
 // returns -2 when end of queue is reached; returns -3 if IMG_OP_NAK was received by server
 int send_file(int socket, char *filename) {
     // Open the file
-    printf("%s\n", filename);
+    // printf("%s\n", filename);
     FILE *fd = fopen(filename, "r");
     if (fd == NULL) 
         perror("Error opening file for sending");
@@ -70,28 +70,40 @@ int send_file(int socket, char *filename) {
         perror("send error");
 
     // wait to receive acknowledge packet before sending image data
-    char received_data[PACKETSZ];
-    memset(received_data, 0, PACKETSZ);
+    char received_data[sizeof(char) * PACKETSZ];
+    memset(received_data, 0, sizeof(char) * PACKETSZ);
     if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
         perror("recv error");
     
     packet_t *received_packet = deserializeData(received_data);
-
     if (received_packet->operation == IMG_OP_NAK)
         return -3; // Server did not acknowledge image, skip this one
+    free(received_packet);
 
     // read chunks of image data from file into buffer and send to server (clientHandler) 
-    char msg[BUFF_SIZE]; // to store image data
-    memset(msg, 0, BUFF_SIZE); 
+    char msg[BUFF_SIZE + 1]; // to store image data
+    memset(msg, 0, BUFF_SIZE + 1); 
     while (fread(msg, sizeof(char), BUFF_SIZE, fd) > 0) { 
         // send image data
-        setbuf(stdin, NULL);
+        printf("%s\n", msg);
         if(send(socket, msg, BUFF_SIZE, 0) == -1) // send message to server and error check
             perror("send error");
-        memset(msg, 0, BUFF_SIZE); // clear buffer for next read
-    }
+        memset(msg, 0, BUFF_SIZE + 1); // clear buffer for next read
 
-    free(received_packet);
+        // only continue if server sends back ack
+        memset(received_data, 0, PACKETSZ);
+        if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
+            perror("recv error");
+        
+        received_packet = deserializeData(received_data);
+
+        if (received_packet->operation == IMG_OP_NAK)
+            return -3; // Server did not acknowledge image, skip this one
+        free(received_packet);
+    }
+    
+    printf("death\n");
+
     free(serialized_data);
     free(cur_request);
     received_packet = NULL;
@@ -194,6 +206,10 @@ int main(int argc, char* argv[]) {
     }
 
     while(1) {
+        // queue empty
+        if (req_queue == NULL)
+            break;
+
         // get path of current image
         char filename[BUFF_SIZE];
         memset(filename, 0, BUFF_SIZE);
