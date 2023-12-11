@@ -17,25 +17,10 @@ void *clientHandler(void *input_socket) {
     // Create ack packet: use to send IMG_OP_ACK
     packet_t ack_packet = {IMG_OP_ACK, IMG_FLAG_ENCRYPTED, htonl(0)};
     char *serialized_ack = serializePacket(&ack_packet);
-
-    // TODO Stephen: where do we get the file names from? Also what exactly are these used for? 
-    // - filename is simply the temp file to save the received data from client to use in STBI stuff
-
-    // do we need rotated_file if it's only used for "stbi_write_png(rotated_file,..." which 
-    // saves the processed img to rotated_file. Doesn't client.c receive file do that?
-    // - we need to save the rotated data into a file that we can then read and send over to client
-    // - this is thanks to needing to use the stbi functions, which only work on files
-
-
-    // Does filename store the image data (stream of bytes) which is written in a temp file in client?
-    // Then, is rotated_file used to store the processed image data (stream of bytes) which is written in a temp file here?
-    // How do we send the client the rotated_file file name?
-    // - both of these are helpers for server, they will not be interacted with client in anyway
-    
     
     // filename is the name of the temp file we will be writing the inital received data from client to
     // rot_file will be the name of the temp file we will write to with stbi_write, stores rotated image data
-    // we will then read rot_file and send the byte stream over to client like how client sent data to server inti
+    // we will then read rot_file and send the byte stream over to client like how client sent data to server 
     char filename[BUFF_SIZE]; 
     char rotated_file[BUFFER_SIZE];
     memset(filename, 0, BUFF_SIZE);
@@ -132,10 +117,6 @@ void *clientHandler(void *input_socket) {
 
         //You should be ready to call stbi_write_png using:
         //New path to where you wanna save the file, Width, height, img_array, width*CHANNEL_NUM
-
-        // char path[BUFF_SIZE+2];
-        // memset(path, 0, BUFF_SIZE+2);
-        // sprintf(path, "%s/%s", rotated_file, get_filename_from_path());
         stbi_write_png(rotated_file, width, height, CHANNEL_NUM, img_array, (width) * CHANNEL_NUM);
 
         // Free mallocs and set to NULL to avoid double frees
@@ -173,15 +154,15 @@ void *clientHandler(void *input_socket) {
     }
 
     if (fclose(fd) == -1)
-        perror("issue closing temp file\n");
+        perror("issue closing temp file");
     if (fclose(rot_fd) == -1)
-        perror("issue closing temp rot file\n");
+        perror("issue closing temp rot file");
 
     // delete temp files
     if (remove(filename) != 0)
-        perror("Issue with deleting temp file\n");
+        perror("Issue with deleting temp file");
     if (remove(rotated_file) != 0)
-        perror("Issue with deleting temp rot file\n");
+        perror("Issue with deleting temp rot file");
     
     pthread_exit(NULL);
 }
@@ -234,6 +215,8 @@ int main(int argc, char* argv[]) {
         // }
         // pthread_detach(workerArray[worker_idx]);
         // worker_idx++;
+
+        // debugging by running clientHandler once
         clientHandler((void *)&conn_fd);
     }
 

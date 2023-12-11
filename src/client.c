@@ -132,12 +132,10 @@ int receive_file(int socket, const char *filename) {
     char received_data[BUFF_SIZE + 1];
     memset(received_data, 0, BUFF_SIZE + 1);
     while(1) {
-        // TODO: Just a question. Is received_data supposed to be the rotated_file file name OR "END"?
-        // - it should be the rotated file DATA i.e. the bytes that make up the image itself
-        // - otherwise, it will be END showing that the server has finished sending all the image data
+        // received_data will either be the rotated file data sent as a stream of bytes by the server
+        // OR "END" to indicate that the server has finished sending all the image data
         if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
             perror("recv error");
-        // TODO: sending "END" not implemented in server's clientHandler end yet
         if (!strcmp(received_data, "END"))
             break;
         // TODO: null terminator might cause bugs
