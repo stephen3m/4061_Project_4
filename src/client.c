@@ -43,7 +43,7 @@ void enqueue_request(int new_angle, char* file_path){
 // returns -2 when end of queue is reached; returns -3 if IMG_OP_NAK was received by server
 int send_file(int socket, char *filename) {
     // Open the file
-    // printf("%s\n", filename);
+    printf("%s\n", filename);
     FILE *fd = fopen(filename, "r");
     if (fd == NULL) 
         perror("Error opening file for sending");
@@ -87,7 +87,7 @@ int send_file(int socket, char *filename) {
     memset(msg, 0, BUFF_SIZE + 1); 
     while (fread(msg, sizeof(char), BUFF_SIZE, fd) > 0) { 
         // send image data
-        printf("%s\n", msg);
+        // printf("%s\n", msg);
         if(send(socket, msg, BUFF_SIZE, 0) == -1) // send message to server and error check
             perror("send error");
         memset(msg, 0, BUFF_SIZE + 1); // clear buffer for next read

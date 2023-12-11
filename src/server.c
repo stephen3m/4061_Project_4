@@ -37,7 +37,7 @@ void *clientHandler(void *input_socket) {
         send(*socket, serialized_error, sizeof(packet_t), 0);
     }
     
-    FILE *rot_fd = fopen(rotated_file, "r");
+    FILE *rot_fd = fopen(rotated_file, "w");
     if (rot_fd == NULL) {
         send(*socket, serialized_error, sizeof(packet_t), 0);
     }
@@ -78,7 +78,7 @@ void *clientHandler(void *input_socket) {
             
             // write received data to temp file
             printf("%s\n", imgData); // Stephen TODO: is this supposed to be \n or \0?
-            fwrite(imgData, sizeof(char), BUFF_SIZE, fd);
+            fwrite(imgData, sizeof(char), bytes_read, fd);
             // prepare for next iteration
             total_bytes_read += bytes_read;
             memset(imgData, 0, BUFF_SIZE + 1);

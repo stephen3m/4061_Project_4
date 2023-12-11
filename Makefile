@@ -18,6 +18,7 @@ client: $(LIBDIR)/utils.o $(INCDIR)/utils.h $(SRCDIR)/client.c
 clean:
 	rm -f server client
 	rm -rf output
+	rm -rf temp_file* rotated_image_data*
 
 test: clean all
 	./server & 
