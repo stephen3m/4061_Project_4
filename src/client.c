@@ -67,13 +67,13 @@ int send_file(int socket, char *filename) {
 
     // serialize and send packet w/ img info to clientHandler
     char *serialized_data = serializePacket(&request_packet);
-    if (send(socket, serialized_data, sizeof(packet_t), 0) == -1)
+    if (send(socket, serialized_data, PACKETSZ, 0) == -1)
         perror("send error");
 
     // received_data will receive acknowledgement packet from server
     char received_data[sizeof(char) * PACKETSZ];
     memset(received_data, 0, sizeof(char) * PACKETSZ);
-    if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
+    if (recv(socket, received_data, PACKETSZ, 0) == -1)
         perror("recv error");
     
     packet_t *received_packet = deserializeData(received_data);
