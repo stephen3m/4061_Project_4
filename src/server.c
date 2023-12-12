@@ -19,8 +19,9 @@ void *clientHandler(void *socket_fd) {
     char rotated_file[BUFFER_SIZE];
     memset(filename, 0, BUFF_SIZE);
     memset(rotated_file, 0, BUFF_SIZE);
-    sprintf(filename, "temp_img%ld", pthread_self()); // filename will be temp_imgX where X is thread ID
-    sprintf(rotated_file, "rot_temp_img%ld", pthread_self()); // filename rot_temp_imgX
+    sprintf(filename, "temp_img%ld.png", pthread_self()); // filename will be temp_imgX where X is thread ID
+    sprintf(rotated_file, "rot_temp_img%ld.png", pthread_self()); // filename rot_temp_imgX
+
     FILE *fd = fopen(filename, "w+");
     if (fd == NULL) {
         // send IMG_OP_NAK, don't need to call exit since client will handle that when it receives IMG_OP_NAK
@@ -31,8 +32,17 @@ void *clientHandler(void *socket_fd) {
         send(socket, serialized_error, PACKETSZ, 0);
     }
 
-    printf("initial set up complete\n");
     while (1) {
+        fd = fopen(filename, "w+");
+        if (fd == NULL) {
+            // send IMG_OP_NAK, don't need to call exit since client will handle that when it receives IMG_OP_NAK
+            send(socket, serialized_error, PACKETSZ, 0);
+        }
+        rot_fd = fopen(rotated_file, "w+");
+        if (rot_fd == NULL) {
+            send(socket, serialized_error, PACKETSZ, 0);
+        }
+        
         // Receive initial metadata from the client
         char recvdata[PACKETSZ];
         memset(recvdata, 0, PACKETSZ);
@@ -46,22 +56,18 @@ void *clientHandler(void *socket_fd) {
         // if packet op is EXIT, break from loop before doing anything else
         if (recvpacket->operation == IMG_OP_EXIT) {
             free(recvpacket);
-            printf("exiting big while\n");
             break;
         }
-        printf("received metadata, size = %d\n", recvpacket->size);
 
         // send back acknowledgement
         if(send(socket, serialized_ack, PACKETSZ, 0) == -1)
             send(socket, serialized_error, PACKETSZ, 0); 
-        printf("sending back ack\n");
 
         // Receive the image data using the size
         char received_data[BUFF_SIZE];
         memset(received_data, 0, BUFF_SIZE);
         int failed = 0;
         int total_bytes_read = 0;
-        printf("begin rec img data\n");
         while (total_bytes_read < recvpacket->size) {
         // read in data from client
             int bytes_read = recv(socket, received_data, BUFF_SIZE, 0);
@@ -70,7 +76,6 @@ void *clientHandler(void *socket_fd) {
             else if (bytes_read == 1 && bytes_read == 'f') // done reading data
                 break;
             total_bytes_read += bytes_read;
-            printf("received %d bytes, total = %d\n", bytes_read, total_bytes_read);
 
             fwrite(received_data, sizeof(char), bytes_read, fd); 
             memset(received_data, 0, BUFF_SIZE);
@@ -80,20 +85,20 @@ void *clientHandler(void *socket_fd) {
                 failed = 1;
                 break;
             }
-            printf("sent back ack packet\n");
         }
 
         if (failed) {
             send(socket, serialized_error, PACKETSZ, 0);
-            printf("failed true and sent back err packet\n");
             continue;
         }
         
         // Process the image data based on the set of flags
         // Stbi_load loads in an image from specified location; populates width, height, and bpp with values
-        printf("rotating image\n");
-        int width, height, bpp;
-        uint8_t* image_result = stbi_load(filename, &width, &height, &bpp, CHANNEL_NUM);
+        rewind(fd);
+        int width;
+        int height;
+        int bpp;
+        uint8_t* image_result = stbi_load_from_file(fd, &width, &height, &bpp, CHANNEL_NUM);
 
         uint8_t **result_matrix = (uint8_t **)malloc(sizeof(uint8_t*) * width);
         uint8_t **img_matrix = (uint8_t **)malloc(sizeof(uint8_t*) * width);
@@ -135,7 +140,6 @@ void *clientHandler(void *socket_fd) {
         // return the processed image data
         char msg[8]; // to store image data
         memset(msg, 0, 8);
-        printf("begin returning rotated data\n");
         while (1) {
             int bytes_read = fread(msg, sizeof(char), 8, rot_fd);
             if (bytes_read == 0)
@@ -149,7 +153,6 @@ void *clientHandler(void *socket_fd) {
                 perror("send error");
             memset(msg, 0, 8); // clear buffer for next read
 
-            printf("sending data %d and read %d\n", bytes_sent, bytes_read);
             // wait for client to send ack before continuing to send more data
             char received_data[PACKETSZ];
             memset(received_data, 0, PACKETSZ);
@@ -161,35 +164,43 @@ void *clientHandler(void *socket_fd) {
             if (received_packet->operation == IMG_OP_NAK) // if not acknowledge, skip image
                 failed = 1;
             
-            printf("received packet back\n");
-            
             free(received_packet);
             if (failed) {
                 send(socket, serialized_error, PACKETSZ, 0);
-                printf("err packet received, break\n");
                 break;
             }
         }
 
         // send smaller package to let server know done sending imagedata
-        printf("sending end char\n");
-        char end = 'f';
-        if (send(socket, &end, sizeof(char), 0) == -1)
+        char end[4] = "END";
+        if (send(socket, &end, sizeof(char) * 4, 0) == -1)
             perror("send error");
-        printf("end char sent\n");
+
+        // close file pointers
+        if (fclose(fd) != 0)
+            perror("issue closing temp file");
+        if (fclose(rot_fd) != 0)
+            perror("issue closing temp rot file");
+
+        // delete temp files for next image
+        if (remove(filename) != 0)
+            perror("Issue with deleting temp file");
+        if (remove(rotated_file) != 0)
+            perror("Issue with deleting temp rot file");
     }
 
+    // close file pointers
     if (fclose(fd) != 0)
         perror("issue closing temp file");
     if (fclose(rot_fd) != 0)
         perror("issue closing temp rot file");
-
-    // delete temp files
+    
+    // delete temp files for clean up
     if (remove(filename) != 0)
         perror("Issue with deleting temp file");
     if (remove(rotated_file) != 0)
         perror("Issue with deleting temp rot file");
-        
+
     free(serialized_ack);
     free(serialized_error);
 

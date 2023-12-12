@@ -43,7 +43,6 @@ int send_file(int socket, FILE *fd) {
     // Send the file data
     char msg[8]; // to store image data
     memset(msg, 0, 8);
-    printf("begin sending\n");
     while (1) {
         int bytes_read = fread(msg, sizeof(char), 8, fd);
         if (bytes_read == 0)
@@ -57,26 +56,20 @@ int send_file(int socket, FILE *fd) {
             perror("send error");
         memset(msg, 0, 8); // clear buffer for next read
         
-        printf("sending data %d and read %d\n", bytes_sent, bytes_read);
         // wait for server to send ack before continuing to send more data
         char received_data[PACKETSZ];
         memset(received_data, 0, PACKETSZ);
         if (recv(socket, received_data, PACKETSZ, 0) == -1)
             perror("recv error");
-        printf("receiving ack packet\n");
         
         packet_t *received_packet = NULL;
         received_packet = deserializeData(received_data);
-        if (received_packet->operation == IMG_OP_NAK) {// if not acknowledge, skip image
-            printf("err occurred\n");
+        if (received_packet->operation == IMG_OP_NAK) // if not acknowledge, skip image
             return -3;
-        }
+        
 
         free(received_packet);
-        printf("perpared to send next chunk\n");
     }
-
-    printf("done sending\n");
     
     if(fclose(fd) != 0) 
         perror("fclose failed");
@@ -107,27 +100,20 @@ int receive_file(int socket, const char *filename) {
     // create acknowledge packet for later
     packet_t ack_packet = {IMG_OP_ACK, 0, htons(0)};
     char *serialized_ack = serializePacket(&ack_packet);
-    printf("begin receiving\n");
     while(1) {
         // read in data from server
         int bytes_read = recv(socket, received_data, 8, 0);
-        printf("received %d bytes\n", bytes_read);
         if (bytes_read == -1)
             perror("recv error");
-        else if (bytes_read == 1 && !strcmp(received_data, "f"))
-            break;
-        else if (bytes_read == 1)
+        else if (bytes_read == 4 && !strcmp(received_data, "END"))
             break;
 
         fwrite(received_data, sizeof(char), bytes_read, fd); 
         memset(received_data, 0, 8);
-        printf("received and wrote data %d\n", bytes_read);
         // send back ack packet to let server know we got the data
         if(send(socket, serialized_ack, PACKETSZ, 0) == -1) 
             break;
-        printf("send back ack packet\n");
     }
-    printf("done reading data\n");
 
     free(serialized_ack);
     if(fclose(fd) != 0) 
@@ -204,7 +190,6 @@ int main(int argc, char* argv[]) {
             break;
         
         // Open the file
-        // printf("%s\n", cur_request->file_name);
         FILE *fd = fopen(cur_request->file_name, "r");
         if (fd == NULL) 
             perror("Error opening file for sending");
@@ -223,7 +208,6 @@ int main(int argc, char* argv[]) {
         // serialize and send packet w/ img info to clientHandler
         char *serialized_data = serializePacket(&request_packet);
 
-        printf("Sending metapacket\n");
         if (send(sockfd, serialized_data, PACKETSZ, 0) == -1)
             perror("send error");
 
@@ -233,7 +217,6 @@ int main(int argc, char* argv[]) {
         memset(received_data, 0, PACKETSZ);
         if (recv(sockfd, received_data, PACKETSZ, 0) == -1)
             perror("recv error");
-        printf("Received response packet\n");
         
         packet_t *received_packet = NULL;
         received_packet = deserializeData(received_data);
@@ -241,15 +224,12 @@ int main(int argc, char* argv[]) {
             continue;
 
         // Send the image data to the server
-        printf("entering send func\n");
         int send_results = send_file(sockfd, fd);
         if (send_results == -3) // if IMG_OP_NAK was received, skip this image & continue with rest of queue
             continue;
 
-        printf("exiting send func good and entering receive\n");
         // Receive the processed image and save it in the output dir
         receive_file(sockfd, cur_request->file_name);
-        printf("exiting receive file\n");
 
         free(serialized_data);
         free(received_packet);
@@ -257,7 +237,7 @@ int main(int argc, char* argv[]) {
     }
 
     // send clientHandler IMG_OP_EXIT to have it terminate connection
-    packet_t request_packet = {IMG_OP_EXIT, 0, htons(0)};
+    packet_t request_packet = {IMG_OP_EXIT, 0, htons(-1)};
     char* serialized_data = serializePacket(&request_packet);
     if (send(sockfd, serialized_data, PACKETSZ, 0) == -1)
         perror("send error");
