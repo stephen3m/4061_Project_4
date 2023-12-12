@@ -57,7 +57,7 @@
 typedef struct packet {
     unsigned char operation : 4;
     unsigned char flags : 4;
-    unsigned long int size;
+    unsigned int size;
     // unsigned char checksum[SHA256_BLOCK_SIZE];
 } packet_t; 
 

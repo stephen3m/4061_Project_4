@@ -41,32 +41,42 @@ void enqueue_request(int new_angle, char* file_path){
 
 int send_file(int socket, FILE *fd) {
     // Send the file data
-    char msg[BUFF_SIZE]; // to store image data
-    memset(msg, 0, BUFF_SIZE);
+    char msg[8]; // to store image data
+    memset(msg, 0, 8);
+    printf("begin sending\n");
     while (1) {
-        int bytes_read = fread(msg, sizeof(char), BUFF_SIZE, fd);
+        int bytes_read = fread(msg, sizeof(char), 8, fd);
         if (bytes_read == 0)
             break;
         else if (bytes_read < 0)
             perror("fread failed");
-
-        if(send(socket, msg, bytes_read, 0) == -1) // send message to server and error check
+        
+        int bytes_sent = 0;
+        bytes_sent = send(socket, msg, bytes_read, 0);
+        if(bytes_sent == -1) // send message to server and error check
             perror("send error");
-        memset(msg, 0, BUFF_SIZE + 1); // clear buffer for next read
-
+        memset(msg, 0, 8); // clear buffer for next read
+        
+        printf("sending data %d and read %d\n", bytes_sent, bytes_read);
         // wait for server to send ack before continuing to send more data
         char received_data[PACKETSZ];
         memset(received_data, 0, PACKETSZ);
         if (recv(socket, received_data, PACKETSZ, 0) == -1)
             perror("recv error");
+        printf("receiving ack packet\n");
         
         packet_t *received_packet = NULL;
         received_packet = deserializeData(received_data);
-        if (received_packet->operation == IMG_OP_NAK) // if not acknowledge, skip image
+        if (received_packet->operation == IMG_OP_NAK) {// if not acknowledge, skip image
+            printf("err occurred\n");
             return -3;
-        
+        }
+
         free(received_packet);
+        printf("perpared to send next chunk\n");
     }
+
+    printf("done sending\n");
     
     if(fclose(fd) != 0) 
         perror("fclose failed");
@@ -91,28 +101,33 @@ int receive_file(int socket, const char *filename) {
         perror("Error opening file");
 
     // for receiving the response packet
-    char received_data[BUFF_SIZE];
-    memset(received_data, 0, BUFF_SIZE);
+    char received_data[8];
+    memset(received_data, 0, 8);
 
     // create acknowledge packet for later
     packet_t ack_packet = {IMG_OP_ACK, 0, htons(0)};
     char *serialized_ack = serializePacket(&ack_packet);
-
+    printf("begin receiving\n");
     while(1) {
         // read in data from server
-        int bytes_read = recv(socket, received_data, BUFF_SIZE, 0);
+        int bytes_read = recv(socket, received_data, 8, 0);
+        printf("received %d bytes\n", bytes_read);
         if (bytes_read == -1)
             perror("recv error");
-        else if (bytes_read == 0)
+        else if (bytes_read == 1 && !strcmp(received_data, "f"))
+            break;
+        else if (bytes_read == 1)
             break;
 
         fwrite(received_data, sizeof(char), bytes_read, fd); 
-        memset(received_data, 0, BUFF_SIZE);
-
+        memset(received_data, 0, 8);
+        printf("received and wrote data %d\n", bytes_read);
         // send back ack packet to let server know we got the data
         if(send(socket, serialized_ack, PACKETSZ, 0) == -1) 
-            break; 
+            break;
+        printf("send back ack packet\n");
     }
+    printf("done reading data\n");
 
     free(serialized_ack);
     if(fclose(fd) != 0) 
@@ -239,7 +254,6 @@ int main(int argc, char* argv[]) {
         free(serialized_data);
         free(received_packet);
         free(cur_request);
-        fclose(fd);
     }
 
     // send clientHandler IMG_OP_EXIT to have it terminate connection

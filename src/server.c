@@ -49,25 +49,28 @@ void *clientHandler(void *socket_fd) {
             printf("exiting big while\n");
             break;
         }
-        printf("received metadata\n");
+        printf("received metadata, size = %d\n", recvpacket->size);
 
         // send back acknowledgement
-        if(send(socket, serialized_ack, PACKETSZ, 0)) 
+        if(send(socket, serialized_ack, PACKETSZ, 0) == -1)
             send(socket, serialized_error, PACKETSZ, 0); 
+        printf("sending back ack\n");
 
         // Receive the image data using the size
         char received_data[BUFF_SIZE];
         memset(received_data, 0, BUFF_SIZE);
         int failed = 0;
         int total_bytes_read = 0;
+        printf("begin rec img data\n");
         while (total_bytes_read < recvpacket->size) {
         // read in data from client
             int bytes_read = recv(socket, received_data, BUFF_SIZE, 0);
             if (bytes_read == -1)
                 perror("recv error");
-            else if (bytes_read == 0) // done reading data
+            else if (bytes_read == 1 && bytes_read == 'f') // done reading data
                 break;
             total_bytes_read += bytes_read;
+            printf("received %d bytes, total = %d\n", bytes_read, total_bytes_read);
 
             fwrite(received_data, sizeof(char), bytes_read, fd); 
             memset(received_data, 0, BUFF_SIZE);
@@ -77,70 +80,77 @@ void *clientHandler(void *socket_fd) {
                 failed = 1;
                 break;
             }
+            printf("sent back ack packet\n");
         }
 
         if (failed) {
             send(socket, serialized_error, PACKETSZ, 0);
+            printf("failed true and sent back err packet\n");
             continue;
         }
         
         // Process the image data based on the set of flags
         // Stbi_load loads in an image from specified location; populates width, height, and bpp with values
-            int width, height, bpp;
-            uint8_t* image_result = stbi_load(filename, &width, &height, &bpp, CHANNEL_NUM);
+        printf("rotating image\n");
+        int width, height, bpp;
+        uint8_t* image_result = stbi_load(filename, &width, &height, &bpp, CHANNEL_NUM);
 
-            uint8_t **result_matrix = (uint8_t **)malloc(sizeof(uint8_t*) * width);
-            uint8_t **img_matrix = (uint8_t **)malloc(sizeof(uint8_t*) * width);
-            for(int i = 0; i < width; i++){
-                result_matrix[i] = (uint8_t *)malloc(sizeof(uint8_t) * height);
-                img_matrix[i] = (uint8_t *)malloc(sizeof(uint8_t) * height);
-            }
+        uint8_t **result_matrix = (uint8_t **)malloc(sizeof(uint8_t*) * width);
+        uint8_t **img_matrix = (uint8_t **)malloc(sizeof(uint8_t*) * width);
+        for(int i = 0; i < width; i++){
+            result_matrix[i] = (uint8_t *)malloc(sizeof(uint8_t) * height);
+            img_matrix[i] = (uint8_t *)malloc(sizeof(uint8_t) * height);
+        }
 
-            linear_to_image(image_result, img_matrix, width, height);
-            
-            if (recvpacket->flags == IMG_FLAG_ROTATE_180)
-                flip_left_to_right(img_matrix, result_matrix, width, height);
-            else if (recvpacket->flags == IMG_FLAG_ROTATE_270) 
-                flip_upside_down(img_matrix, result_matrix, width, height);
+        linear_to_image(image_result, img_matrix, width, height);
+        
+        if (recvpacket->flags == IMG_FLAG_ROTATE_180)
+            flip_left_to_right(img_matrix, result_matrix, width, height);
+        else if (recvpacket->flags == IMG_FLAG_ROTATE_270) 
+            flip_upside_down(img_matrix, result_matrix, width, height);
 
-            uint8_t* img_array = malloc(sizeof(uint8_t) * (width) * (height)); ///Hint malloc using sizeof(uint8_t) * width * height
+        uint8_t* img_array = malloc(sizeof(uint8_t) * (width) * (height)); ///Hint malloc using sizeof(uint8_t) * width * height
 
-            flatten_mat(result_matrix, img_array, width, height);
+        flatten_mat(result_matrix, img_array, width, height);
 
-            stbi_write_png(rotated_file, width, height, CHANNEL_NUM, img_array, (width) * CHANNEL_NUM);
+        stbi_write_png(rotated_file, width, height, CHANNEL_NUM, img_array, (width) * CHANNEL_NUM);
 
-            // Free mallocs and set to NULL to avoid double frees
-            for(int i = 0; i < width; i++){
-                free(result_matrix[i]);
-                free(img_matrix[i]);
-                result_matrix[i] = NULL;
-                img_matrix[i] = NULL;
-            }
+        // Free mallocs and set to NULL to avoid double frees
+        for(int i = 0; i < width; i++){
+            free(result_matrix[i]);
+            free(img_matrix[i]);
+            result_matrix[i] = NULL;
+            img_matrix[i] = NULL;
+        }
 
-            free(result_matrix);
-            free(img_matrix);
-            free(img_array);
-            free(image_result);
-            image_result = NULL;
-            result_matrix = NULL;
-            img_matrix = NULL;
-            img_array = NULL;
+        free(result_matrix);
+        free(img_matrix);
+        free(img_array);
+        free(image_result);
+        image_result = NULL;
+        result_matrix = NULL;
+        img_matrix = NULL;
+        img_array = NULL;
 
         // return the processed image data
-        char msg[BUFF_SIZE]; // to store image data
-        memset(msg, 0, BUFF_SIZE);
+        char msg[8]; // to store image data
+        memset(msg, 0, 8);
+        printf("begin returning rotated data\n");
         while (1) {
-            int bytes_read = fread(msg, sizeof(char), BUFF_SIZE, rot_fd);
+            int bytes_read = fread(msg, sizeof(char), 8, rot_fd);
             if (bytes_read == 0)
                 break;
             else if (bytes_read < 0)
                 perror("fread failed");
 
-            if(send(socket, msg, bytes_read, 0) == -1) // send message to server and error check
+            int bytes_sent = 0;
+            bytes_sent = send(socket, msg, bytes_read, 0);
+            if(bytes_sent == -1) // send message to client and error check
                 perror("send error");
-            memset(msg, 0, BUFF_SIZE + 1); // clear buffer for next read
+            memset(msg, 0, 8); // clear buffer for next read
 
-            // wait for server to send ack before continuing to send more data
+            printf("sending data %d and read %d\n", bytes_sent, bytes_read);
+            // wait for client to send ack before continuing to send more data
             char received_data[PACKETSZ];
             memset(received_data, 0, PACKETSZ);
             if (recv(socket, received_data, PACKETSZ, 0) == -1)
@@ -151,13 +161,22 @@ void *clientHandler(void *socket_fd) {
             if (received_packet->operation == IMG_OP_NAK) // if not acknowledge, skip image
                 failed = 1;
             
+            printf("received packet back\n");
             
             free(received_packet);
             if (failed) {
                 send(socket, serialized_error, PACKETSZ, 0);
+                printf("err packet received, break\n");
                 break;
             }
         }
+
+        // send smaller package to let server know done sending imagedata
+        printf("sending end char\n");
+        char end = 'f';
+        if (send(socket, &end, sizeof(char), 0) == -1)
+            perror("send error");
+        printf("end char sent\n");
     }
 
     if (fclose(fd) != 0)
