@@ -11,13 +11,14 @@ int worker_idx = 0;
 int workers_done = 0;
 
 void *clientHandler(void *input_socket) {
+    printf("thread created\n");
     int socket_fd = *((int*) input_socket);
     // Create error packet: used to send IMG_OP_NAK
-    packet_t error_packet = {IMG_OP_NAK, IMG_FLAG_ENCRYPTED, htonl(0)};
+    packet_t error_packet = {IMG_OP_NAK, 0, htons(0)};
     char *serialized_error = serializePacket(&error_packet);
     // // Create ack packet: use to send IMG_OP_ACK
-    // packet_t ack_packet = {IMG_OP_ACK, IMG_FLAG_ENCRYPTED, htonl(0)};
-    // char *serialized_ack = serializePacket(&ack_packet);
+    packet_t ack_packet = {IMG_OP_ACK, 0, htons(0)};
+    char *serialized_ack = serializePacket(&ack_packet);
     
     // filename is the name of the temp file we will be writing the inital received data from client to
     // rot_file will be the name of the temp file we will write to with stbi_write, stores rotated image data
@@ -37,6 +38,7 @@ void *clientHandler(void *input_socket) {
     if (rot_fd == NULL) {
         send(socket_fd, serialized_error, sizeof(packet_t), 0);
     }
+    printf("created temp files, about to receive packet from c\n");
 
     // Receive packet from the client
     char recvdata[PACKETSZ];
@@ -46,9 +48,14 @@ void *clientHandler(void *input_socket) {
         send(socket_fd, serialized_error, sizeof(packet_t), 0); 
     }
     packet_t *recvpacket = deserializeData(recvdata);
+    printf("received packet\n");
+
+    if(send(socket_fd, serialized_ack, PACKETSZ, 0)) 
+        send(socket_fd, serialized_error, sizeof(packet_t), 0); 
+    printf("sent ack packet\n");
     
     while(recvpacket->operation != IMG_OP_EXIT) { // breaks when it receives IMG_OP_EXIT from client
-        int img_size = recvpacket->size;       
+        long img_size = recvpacket->size;       
 
         // Receive the image data and write to temp file
         uint8_t img_data[img_size];
@@ -63,14 +70,16 @@ void *clientHandler(void *input_socket) {
         // int bytes_read = 0;
         // char imgData[BUFF_SIZE + 1]; // +1 for null terminator
         // memset(imgData, 0, BUFF_SIZE + 1);
-        // while(total_bytes_read < recvpacket->size) {
+        // while(1) {
         //     // get data from client
-        //     bytes_read = recv(*socket, imgData, BUFF_SIZE, 0);
+        //     bytes_read = recv(socket_fd, imgData, BUFF_SIZE, 0);
         //     if (bytes_read == -1)
         //         send(socket_fd, serialized_error, sizeof(packet_t), 0);
+        //     else if (bytes_read == 0)
+        //         break;
             
         //     // write received data to temp file
-        //     printf("%s\n", imgData); // Stephen TODO: is this supposed to be \n or \0?
+        //     // printf("%s\n", imgData); // Stephen TODO: is this supposed to be \n or \0?
         //     fwrite(imgData, sizeof(char), bytes_read, fd);
         //     // prepare for next iteration
         //     total_bytes_read += bytes_read;
@@ -80,6 +89,7 @@ void *clientHandler(void *input_socket) {
         //     if (send(socket_fd, serialized_ack, sizeof(packet_t), 0) == -1)
         //         send(socket_fd, serialized_error, sizeof(packet_t), 0);
         // }
+        printf("done getting image data\n");
 
         // Process the image data based on the set of flags
         // Stbi_load loads in an image from specified location; populates width, height, and bpp with values
@@ -105,16 +115,19 @@ void *clientHandler(void *input_socket) {
         flatten_mat(result_matrix, img_array, width, height);
 
         // Create ack packet
-        packet_t ack_packet;
-        ack_packet.operation = IMG_OP_ACK;
-        ack_packet.flags = recvpacket->flags;
-        ack_packet.size = img_size;
+        // packet_t ack_packet;
+        // ack_packet.operation = IMG_OP_ACK;
+        // ack_packet.flags = recvpacket->flags;
+        // ack_packet.size = img_size;
 
         // Send IMG_OP_ACK 
-        ret = send(socket_fd, (char*) &ack_packet, PACKETSZ, 0);
-        if(ret == -1) {
+        // ret = send(socket_fd, (char*) &ack_packet, PACKETSZ, 0);
+        // if(ret == -1) {
+        //     send(socket_fd, serialized_error, sizeof(packet_t), 0); 
+        // }
+
+        if(send(socket_fd, serialized_ack, PACKETSZ, 0)) 
             send(socket_fd, serialized_error, sizeof(packet_t), 0); 
-        }
 
         //New path to where you wanna save the file, Width, height, img_array, width*CHANNEL_NUM
         stbi_write_png(rotated_file, width, height, CHANNEL_NUM, img_array, (width) * CHANNEL_NUM);
@@ -157,6 +170,9 @@ void *clientHandler(void *input_socket) {
             send(socket_fd, serialized_error, sizeof(packet_t), 0); 
         }
         recvpacket = deserializeData(recvdata);
+        
+        fseek(fd, 0, SEEK_SET); // return filepointer to beginning for next image
+        fseek(rot_fd, 0, SEEK_SET); // return filepointer to beginning for next image
     }
 
     if (fclose(fd) != 0)

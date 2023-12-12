@@ -54,27 +54,32 @@ int send_file(int socket, char *filename) {
     if (cur_request == NULL) // if all images have been dequeued, return -2
         return -2;
 
-    packet_t request_packet;
-    request_packet.operation = IMG_OP_ROTATE;
-    if(cur_request->rotation_angle == 180)
-        request_packet.flags = IMG_FLAG_ROTATE_180;
-    else if(cur_request->rotation_angle == 270)
-        request_packet.flags = IMG_FLAG_ROTATE_270;
-
     fseek(fd, 0, SEEK_END); // calculate size of image and set packet accordingly
-    request_packet.size = htonl(ftell(fd));
+    long size = htons(ftell(fd));
     fseek(fd, 0, SEEK_SET); // return filepointer to beginning for reading later
+
+    int flag = 0;
+    if(cur_request->rotation_angle == 180)
+        flag = IMG_FLAG_ROTATE_180;
+    else if(cur_request->rotation_angle == 270)
+        flag = IMG_FLAG_ROTATE_270;
+    
+    packet_t request_packet = {IMG_OP_ROTATE, flag, size};
 
     // serialize and send packet w/ img info to clientHandler
     char *serialized_data = serializePacket(&request_packet);
+
+    printf("about to send packet\n");
     if (send(socket, serialized_data, PACKETSZ, 0) == -1)
         perror("send error");
+    printf("sent packet\n");
 
     // received_data will receive acknowledgement packet from server
     char received_data[sizeof(char) * PACKETSZ];
     memset(received_data, 0, sizeof(char) * PACKETSZ);
     if (recv(socket, received_data, PACKETSZ, 0) == -1)
         perror("recv error");
+    printf("got packet back\n");
     
     packet_t *received_packet = deserializeData(received_data);
     if (received_packet->operation == IMG_OP_NAK)
@@ -93,18 +98,18 @@ int send_file(int socket, char *filename) {
         memset(msg, 0, BUFF_SIZE + 1); // clear buffer for next read
 
         // only continue if server sends back ack
-        memset(received_data, 0, PACKETSZ);
-        if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
-            perror("recv error");
+        // memset(received_data, 0, PACKETSZ);
+        // if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
+        //     perror("recv error");
         
-        received_packet = deserializeData(received_data);
+        // received_packet = deserializeData(received_data);
 
-        if (received_packet->operation == IMG_OP_NAK)
-            return -3; // Server sent IMG_OP_NAK to indicate error, skip this one
-        free(received_packet);
+        // if (received_packet->operation == IMG_OP_NAK)
+        //     return -3; // Server sent IMG_OP_NAK to indicate error, skip this one
+        // free(received_packet);
     }
     
-    printf("send_file death\n");
+    printf("succ sent file supposedly\n");
 
     free(serialized_data);
     free(cur_request);
@@ -229,11 +234,12 @@ int main(int argc, char* argv[]) {
             continue;
 
         // Receive the processed image and save it in the output dir
+        printf("about to enter receive_file()\n");
         receive_file(sockfd, filename);
     }
 
     // send clientHandler IMG_OP_EXIT to have it terminate connection
-    packet_t request_packet = {IMG_OP_EXIT, IMG_FLAG_CHECKSUM, htonl(0)};
+    packet_t request_packet = {IMG_OP_EXIT, 0, htons(0)};
     char* serialized_data = serializePacket(&request_packet);
     if (send(sockfd, serialized_data, sizeof(packet_t), 0) == -1)
         perror("send error");
