@@ -54,20 +54,20 @@
 typedef struct packet {
     unsigned char operation : 4;
     unsigned char flags : 4;
-    unsigned long size;
+    unsigned int size;
 } packet_t; 
 
 const int PACKETSZ = sizeof(packet_t);
 
 char *serializePacket(packet_t *packet){
-    char *serializedData = (char *)malloc(sizeof(char) * PACKETSZ);
+    char *serializedData = malloc(PACKETSZ);
     memset(serializedData, 0, PACKETSZ);
     memcpy(serializedData, packet, PACKETSZ);
     return serializedData;
 }
 
 packet_t *deserializeData(char *serializedData){
-    packet_t *packet = (packet_t *)malloc(sizeof(packet_t));
+    packet_t *packet = malloc(PACKETSZ);
     memset(packet, 0, PACKETSZ);
     memcpy(packet, serializedData, PACKETSZ);
     return packet;

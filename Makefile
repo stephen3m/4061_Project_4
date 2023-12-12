@@ -19,6 +19,7 @@ clean:
 	rm -f server client
 	rm -rf output
 	rm -rf temp_file* rotated_image_data*
+	rm -rf rot_temp_img* temp_img*
 
 test: clean all
 	./server & 

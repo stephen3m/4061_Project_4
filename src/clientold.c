@@ -39,43 +39,91 @@ void enqueue_request(int new_angle, char* file_path){
     }
 }
 
-int send_file(int socket, FILE *fd) {
-    // Send the file data
-    char msg[BUFF_SIZE]; // to store image data
-    memset(msg, 0, BUFF_SIZE);
-    while (1) {
-        int bytes_read = fread(msg, sizeof(char), BUFF_SIZE, fd);
-        if (bytes_read == 0)
-            break;
-        else if (bytes_read < 0)
-            perror("fread failed");
+// called for one image. Sends image info packet. Receives ack packet. Sends image file as stream of bytes 
+// returns -2 when end of queue is reached; returns -3 if IMG_OP_NAK was received by server
+int send_file(int socket, char *filename) {
+    // Open the file
+    printf("%s\n", filename);
+    FILE *fd = fopen(filename, "r");
+    if (fd == NULL) 
+        perror("Error opening file for sending");
 
-        if(send(socket, msg, bytes_read, 0) == -1) // send message to server and error check
+    // Set up the request packet for the server and send it
+    request_t *cur_request = dequeue_request();
+
+    if (cur_request == NULL) // if all images have been dequeued, return -2
+        return -2;
+
+    fseek(fd, 0, SEEK_END); // calculate size of image and set packet accordingly
+    long size = htons(ftell(fd));
+    fseek(fd, 0, SEEK_SET); // return filepointer to beginning for reading later
+
+    int flag = 0;
+    if(cur_request->rotation_angle == 180)
+        flag = IMG_FLAG_ROTATE_180;
+    else if(cur_request->rotation_angle == 270)
+        flag = IMG_FLAG_ROTATE_270;
+    
+    packet_t request_packet = {IMG_OP_ROTATE, flag, size};
+
+    // serialize and send packet w/ img info to clientHandler
+    char *serialized_data = serializePacket(&request_packet);
+
+    printf("about to send packet\n");
+    if (send(socket, serialized_data, PACKETSZ, 0) == -1)
+        perror("send error");
+    printf("sent packet\n");
+
+    // received_data will receive acknowledgement packet from server
+    char received_data[sizeof(char) * PACKETSZ];
+    memset(received_data, 0, sizeof(char) * PACKETSZ);
+    if (recv(socket, received_data, PACKETSZ, 0) == -1)
+        perror("recv error");
+    printf("got packet back\n");
+    
+    packet_t *received_packet = deserializeData(received_data);
+    if (received_packet->operation == IMG_OP_NAK)
+        return -3; // Server sent IMG_OP_NAK to indicate error, skip this one
+    free(received_packet);
+
+    // if IMG_OP_NAK wasn't received, IMG_OP_ACK was received so now, we can
+    // read chunks of image data from file into buffer and send to server (clientHandler) 
+    char msg[BUFF_SIZE + 1]; // to store image data
+    memset(msg, 0, BUFF_SIZE + 1); 
+    while (fread(msg, sizeof(char), BUFF_SIZE, fd) > 0) { 
+        // send image data
+        // printf("%s\n", msg);
+        if(send(socket, msg, BUFF_SIZE, 0) == -1) // send message to server and error check
             perror("send error");
         memset(msg, 0, BUFF_SIZE + 1); // clear buffer for next read
 
-        // wait for server to send ack before continuing to send more data
-        char received_data[PACKETSZ];
+        // only continue if server sends back ack
         memset(received_data, 0, PACKETSZ);
-        if (recv(socket, received_data, PACKETSZ, 0) == -1)
+        if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
             perror("recv error");
         
-        packet_t *received_packet = NULL;
         received_packet = deserializeData(received_data);
-        if (received_packet->operation == IMG_OP_NAK) // if not acknowledge, skip image
-            return -3;
-        
+
+        if (received_packet->operation == IMG_OP_NAK)
+            return -3; // Server sent IMG_OP_NAK to indicate error, skip this one
         free(received_packet);
     }
     
+    printf("succ sent file supposedly\n");
+
+    free(serialized_data);
+    free(cur_request);
+    received_packet = NULL;
+    serialized_data = NULL;
+    cur_request = NULL;
     if(fclose(fd) != 0) 
         perror("fclose failed");
-
     return 0;
 }
 
+// called for one image. Receives processed image data as a stream of bytes and writes it to file in output directory
 int receive_file(int socket, const char *filename) {
-    // Convert ./img/x/xx.png to ./output/x/xx.png
+    // we want to convert ./img/x/xx.png to ./output/x/xx.png
     char *fname = strstr(filename, "img"); // gets pointer to "img" in filename
     char output_file[BUFF_SIZE];
     memset(output_file, 0, BUFF_SIZE);
@@ -86,35 +134,24 @@ int receive_file(int socket, const char *filename) {
     }
 
     // Open the file
-    FILE *fd = fopen(output_file, "wb");
+    FILE *fd = fopen(output_file, "wb"); // TODO Stephen: Should we use wb instead of w since it's used for binary files?
     if (fd == NULL)
         perror("Error opening file");
-
-    // for receiving the response packet
-    char received_data[BUFF_SIZE];
-    memset(received_data, 0, BUFF_SIZE);
-
-    // create acknowledge packet for later
-    packet_t ack_packet = {IMG_OP_ACK, 0, htons(0)};
-    char *serialized_ack = serializePacket(&ack_packet);
-
+    
+    char received_data[BUFF_SIZE + 1];
+    memset(received_data, 0, BUFF_SIZE + 1);
     while(1) {
-        // read in data from server
-        int bytes_read = recv(socket, received_data, BUFF_SIZE, 0);
-        if (bytes_read == -1)
+        // received_data will either be the rotated file data sent as a stream of bytes by the server
+        // OR "END" to indicate that the server has finished sending all the image data
+        if (recv(socket, received_data, sizeof(packet_t), 0) == -1)
             perror("recv error");
-        else if (bytes_read == 0)
+        if (!strcmp(received_data, "END"))
             break;
-
-        fwrite(received_data, sizeof(char), bytes_read, fd); 
+        // TODO: null terminator might cause bugs
+        fwrite(received_data, sizeof(char), BUFF_SIZE, fd); 
         memset(received_data, 0, BUFF_SIZE);
-
-        // send back ack packet to let server know we got the data
-        if(send(socket, serialized_ack, PACKETSZ, 0) == -1) 
-            break; 
     }
 
-    free(serialized_ack);
     if(fclose(fd) != 0) 
         perror("fclose failed");
 
@@ -137,7 +174,7 @@ int main(int argc, char* argv[]) {
     strcpy(direct_path, argv[2]);
 
     int angle = atoi(argv[3]);
-    
+
     // Set up socket
     int sockfd = socket(AF_INET, SOCK_STREAM, 0); // create socket to establish connection
     if(sockfd == -1)
@@ -147,7 +184,6 @@ int main(int argc, char* argv[]) {
     servaddr.sin_family = AF_INET; // IPv4
     servaddr.sin_addr.s_addr = inet_addr("127.0.0.1"); // server IP, since the server is on same machine, use localhost IP
     servaddr.sin_port = htons(PORT); // Port the server is listening on
-
 
     // Connect the socket
     int ret = connect(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr)); // establish connection to server
@@ -174,86 +210,46 @@ int main(int argc, char* argv[]) {
         if (extension != NULL && strcmp(extension, ".png") == 0) { // check if file ends in ".png"
             char full_file_path[BUFF_SIZE*2]; // in the form "img/x/xxx.png"
             memset(full_file_path, 0, BUFF_SIZE*2);
+            // printf("%s/%s", file_path, entry->d_name);
             sprintf(full_file_path, "%s/%s", file_path, entry->d_name);
             enqueue_request(angle, full_file_path); // synchronization handled in enqueue_request
         }
     }
 
-
-    while(1) {// while queue !empty
-        // send image metadata
-        // Set up the request packet for the server and send it
-        request_t *cur_request = dequeue_request();
-
-        if (cur_request == NULL) // if all images have been dequeued, break
+    while(1) {
+        // queue empty
+        if (req_queue == NULL)
             break;
-        
-        // Open the file
-        // printf("%s\n", cur_request->file_name);
-        FILE *fd = fopen(cur_request->file_name, "r");
-        if (fd == NULL) 
-            perror("Error opening file for sending");
 
-        fseek(fd, 0, SEEK_END); // calculate size of image and set packet accordingly
-        int size = ftell(fd);
-        fseek(fd, 0, SEEK_SET); // return file pointer to beginning of file
+        // get path of current image
+        char filename[BUFF_SIZE];
+        memset(filename, 0, BUFF_SIZE);
+        strcpy(filename, req_queue->file_name);
 
-        int flag = 0;
-        if(cur_request->rotation_angle == 180)
-            flag = IMG_FLAG_ROTATE_180;
-        else if(cur_request->rotation_angle == 270)
-            flag = IMG_FLAG_ROTATE_270;
-        
-        packet_t request_packet = {IMG_OP_ROTATE, flag, size};
-        // serialize and send packet w/ img info to clientHandler
-        char *serialized_data = serializePacket(&request_packet);
-
-        printf("Sending metapacket\n");
-        if (send(sockfd, serialized_data, PACKETSZ, 0) == -1)
-            perror("send error");
-
-        // wait for ack package before sending image data
-        // received_data will be acknowledgement packet from server
-        char received_data[PACKETSZ];
-        memset(received_data, 0, PACKETSZ);
-        if (recv(sockfd, received_data, PACKETSZ, 0) == -1)
-            perror("recv error");
-        printf("Received response packet\n");
-        
-        packet_t *received_packet = NULL;
-        received_packet = deserializeData(received_data);
-        if (received_packet->operation == IMG_OP_NAK) // if not acknowledge, skip image
+        // send metadata and image data to clientHandler
+        int send_results = send_file(sockfd, filename);
+        if (send_results == -2) // if all images have been dequeued, break 
+            break;
+        else if (send_results == -3) // if IMG_OP_NAK was received, skip this image & continue with rest of queue
             continue;
 
-        // Send the image data to the server
-        printf("entering send func\n");
-        int send_results = send_file(sockfd, fd);
-        if (send_results == -3) // if IMG_OP_NAK was received, skip this image & continue with rest of queue
-            continue;
-
-        printf("exiting send func good and entering receive\n");
         // Receive the processed image and save it in the output dir
-        receive_file(sockfd, cur_request->file_name);
-        printf("exiting receive file\n");
-
-        free(serialized_data);
-        free(received_packet);
-        free(cur_request);
-        fclose(fd);
+        printf("about to enter receive_file()\n");
+        receive_file(sockfd, filename);
     }
 
     // send clientHandler IMG_OP_EXIT to have it terminate connection
     packet_t request_packet = {IMG_OP_EXIT, 0, htons(0)};
     char* serialized_data = serializePacket(&request_packet);
-    if (send(sockfd, serialized_data, PACKETSZ, 0) == -1)
+    if (send(sockfd, serialized_data, sizeof(packet_t), 0) == -1)
         perror("send error");
 
     // Terminate the connection once all images have been processed
     close(sockfd);
+
     // Close opened directories
     closedir(file_directory);
-    // Free as needed
-    free(serialized_data);
-
     return 0;
 }
+
+    
