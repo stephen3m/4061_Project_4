@@ -66,7 +66,6 @@ int send_file(int socket, FILE *fd) {
         received_packet = deserializeData(received_data);
         if (received_packet->operation == IMG_OP_NAK) // if not acknowledge, skip image
             return -3;
-        
 
         free(received_packet);
     }
@@ -149,8 +148,8 @@ int main(int argc, char* argv[]) {
     servaddr.sin_addr.s_addr = inet_addr("127.0.0.1"); // server IP, since the server is on same machine, use localhost IP
     servaddr.sin_port = htons(PORT); // Port the server is listening on
 
-
     // Connect the socket
+    sleep(2);
     int ret = connect(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr)); // establish connection to server
     if(ret == -1)
         perror("connect error");
@@ -180,12 +179,10 @@ int main(int argc, char* argv[]) {
         }
     }
 
-
-    while(1) {// while queue !empty
+    while(1) { // while queue !empty
         // send image metadata
         // Set up the request packet for the server and send it
         request_t *cur_request = dequeue_request();
-
         if (cur_request == NULL) // if all images have been dequeued, break
             break;
         
@@ -244,8 +241,11 @@ int main(int argc, char* argv[]) {
 
     // Terminate the connection once all images have been processed
     close(sockfd);
+    printf("Client exiting...\n");
     // Close opened directories
-    closedir(file_directory);
+    if(closedir(file_directory) == -1) {
+        perror("close directory error");
+    }
     // Free as needed
     free(serialized_data);
 

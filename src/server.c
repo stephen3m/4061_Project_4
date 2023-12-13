@@ -6,7 +6,7 @@
 
 
 void *clientHandler(void *socket_fd) {
-     int socket = *((int*) socket_fd);
+    int socket = *((int*) socket_fd);
     // Create error packet: used to send IMG_OP_NAK
     packet_t error_packet = {IMG_OP_NAK, 0, htons(0)};
     char *serialized_error = serializePacket(&error_packet);
@@ -69,10 +69,10 @@ void *clientHandler(void *socket_fd) {
         int failed = 0;
         int total_bytes_read = 0;
         while (total_bytes_read < recvpacket->size) {
-        // read in data from client
+            // read in data from client
             int bytes_read = recv(socket, received_data, BUFF_SIZE, 0);
             if (bytes_read == -1)
-                perror("recv error");
+                send(socket, serialized_error, PACKETSZ, 0);
             else if (bytes_read == 1 && bytes_read == 'f') // done reading data
                 break;
             total_bytes_read += bytes_read;
@@ -256,5 +256,6 @@ int main(int argc, char* argv[]) {
         }
         pthread_detach(curr_thread);
     }
+    
     return 0;
 }
