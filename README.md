@@ -28,6 +28,7 @@ Robert Tan:
 * client.c: main
 * server.c: clientHandler
 * server.c: main
+* README
 
 **How you designed your program for Package sending and processing**  
 client:  
@@ -37,27 +38,32 @@ client:
     open directory  
     while(directory has entry):  
       enqueue png entry to queue  
-    while(1):  
+    while(1):
+      open image file  
+      dequeue request  
+      populate packet fields with request information  
+      serialize metadata and send to clientHandler  
+      if IMG_OP_NAK was received:  
+        skip to next image  
       call send_file  
       call receive_file  
     send IMG_OP_EXIT to client handling thread  
     close socket  
     
   send_file:  
-    open image file  
-    dequeue request  
-    populate packet fields with request information  
-    serialize data and send to clientHandler  
-    if IMG_OP_NAK was received:  
-      skip rest of code  
-    else if IMG_OP_ACK was received:  
-      read image data into buffer  
-      send to clientHandler  
+      open files and set up buffers
+      while(image data left to send)
+        read image data into buffer
+        send to clientHandler  
+        receive acknowledge packet from clientHandler
+
     
   receive_file:  
     open file in output directory   
-    receive processed image data from clientHandler   
-    write the data to opened file  
+    while(image data left to receive)
+      receive processed image data from clientHandler
+      write the data to opened file  
+      send back acknowledge packet
     
 server:  
   main:  
@@ -71,13 +77,19 @@ server:
   
   clientHandler:  
     while(1):  
-      receive packet from client  
+      receive metadata packet from client  
       deserialize packet  
       if IMG_OP_EXIT is received:  
-        skip rest of code  
-      if received packet has IMG_OP_ROTATE operation:  
-        send acknowledgment packet to client  
-      receive image data and write into buffer  
-      if any errors are encountered:  
-        send IMG_OP_NAK and skip rest of job   
-      process image and send back processed image data  
+        break
+      send acknowledgment packet to client
+      while(image data left to receive)
+        receive image data and write into tempfile
+        send back ack packet to client
+        if any errors are encountered:  
+          send IMG_OP_NAK and skip rest of job
+      process image data and write into new rotated file
+      while(image data left to send)
+        read image data into buffer
+        send to client
+        receive acknowledge packet from client
+    clean up and kill thread
